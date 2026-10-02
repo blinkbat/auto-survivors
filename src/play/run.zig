@@ -27,7 +27,7 @@ const ORB_SPEED: f32 = 10;
 const COLLECT_R: f32 = 0.3;
 const BANNER_R: f32 = 1.7;
 pub const SPAWN_R: f32 = 17;
-const DESPAWN_R: f32 = 27;
+pub const DESPAWN_R: f32 = 27;
 pub const FLASH_S: f32 = 0.14;
 pub const SWING_S: f32 = 0.22;
 const SPIT_SPEED: f32 = 4.6;
@@ -110,6 +110,8 @@ pub const Member = struct {
     swing: f32 = 0,
     /// Its swing's share of a full strike, an echo's falling with each.
     swing_k: f32 = 1,
+    /// Strikes so far, echoes too: the view sweeps each the other way.
+    swings: u32 = 0,
     echoes: u8 = 0,
     echo_t: f32 = 0,
     echo_dmg: f32 = 0,
@@ -117,6 +119,15 @@ pub const Member = struct {
     aim: f32 = 0,
     /// The way its last wound drove it, for its recoil.
     kick: V = .{ 0, 0 },
+    /// Risen by a necromancer: its max hp is `hero.REVIVED_HP` of its hero's from then on.
+    revived: bool = false,
+
+    /// Its hero's stats, as it stands in the field.
+    fn fieldStats(m: *const Member) hero.Stats {
+        var s = m.hero.stats();
+        if (m.revived) s.max_hp *= hero.REVIVED_HP;
+        return s;
+    }
 
     /// Everything but `.move`, which waits for a slot.
     pub fn apply(m: *Member, c: hero.Card) void {
@@ -130,7 +141,7 @@ pub const Member = struct {
     }
 
     fn refresh(m: *Member) void {
-        const s = m.hero.stats();
+        const s = m.fieldStats();
         if (s.max_hp > m.stats.max_hp) m.hp += s.max_hp - m.stats.max_hp;
         m.stats = s;
         m.hp = @min(m.hp, s.max_hp);
@@ -185,7 +196,7 @@ pub const Dot = struct {
     show: f32 = 0,
 
     fn apply(d: *Dot, dps: f32, s: f32) void {
-        d.dps = @max(d.dps, dps);
+        d.dps = if (d.t > 0) @max(d.dps, dps) else dps;
         d.t = s;
     }
 };
@@ -203,7 +214,7 @@ pub const Bolt = struct {
     crit: bool = false,
     big: f32 = 1,
     burn: f32 = 0,
-    hits: [8]u32 = undefined,
+    hits: [hero.PIERCE_MAX]u32 = undefined,
     hit_n: u8 = 0,
 
     fn hit(b: *const Bolt, uid: u32) bool {
@@ -271,7 +282,7 @@ pub const Spit = struct { at: V, vel: V, dmg: f32, life: f32, big: bool };
 
 pub const Orb = struct { at: V, xp: f32, to: ?u32 = null, speed: f32 = 0 };
 
-pub const EventKind = enum { hit, kill, hurt, fall, block, heal, pulse, level, recruit, swing, merge, smite, loose, cast, spit, blast, boss, burn, lifeline, wave, stop, poison, sprout, lash, lob, boom, strum, charm, raise, crumble };
+pub const EventKind = enum { hit, kill, hurt, fall, block, heal, pulse, level, recruit, swing, merge, smite, loose, cast, spit, blast, boss, burn, lifeline, wave, stop, poison, sprout, lash, lob, boom, strum, charm, raise, crumble, revive };
 
 pub const Event = struct {
     kind: EventKind,
@@ -588,7 +599,7 @@ pub const Run = struct {
         }
     }
 
-/// What a foe hunts: the nearest hero or skeleton.
+    /// What a foe hunts: the nearest hero or skeleton.
     fn markOf(r: *Run, p: V) V {
         var best = if (r.nearestMember(p)) |m| m.at else r.party;
         var bd = mathx.dist2(best, p);
@@ -746,7 +757,7 @@ pub const Run = struct {
         f.hp -= d.dps * STEP;
         d.acc += d.dps * STEP;
         d.show -= STEP;
-        if (d.show > 0 and f.hp > 0) return;
+        if (d.show > 0 and d.t > 0 and f.hp > 0) return;
         r.emit(.{ .kind = kind, .at = f.at, .foe = f.kind, .amount = d.acc });
         d.acc = 0;
         d.show = DOT_SHOW_S;
@@ -851,8 +862,16 @@ pub const Run = struct {
 
     /// `dmg`, made critical by `chance` for `mult` times as much.
     fn strike(r: *Run, f: *Foe, dmg: f32, chance: f32, mult: f32, dir: V) void {
+        const c = r.roll(chance, mult);
+        r.wound(f, dmg * c.k, dir, false, c.crit);
+    }
+
+    const Roll = struct { crit: bool, k: f32 };
+
+    /// Critical by `chance`, multiplying by `mult` when it is.
+    fn roll(r: *Run, chance: f32, mult: f32) Roll {
         const crit = r.rng.chance(chance);
-        r.wound(f, dmg * (if (crit) mult else 1), dir, false, crit);
+        return .{ .crit = crit, .k = if (crit) mult else 1 };
     }
 
     fn wound(r: *Run, f: *Foe, dmg: f32, dir: V, big: bool, crit: bool) void {
@@ -931,6 +950,7 @@ pub const Run = struct {
     fn cleave(r: *Run, m: *Member, dmg: f32) void {
         const s = m.stats;
         m.swing = SWING_S;
+        m.swings +%= 1;
         r.emit(.{ .kind = .swing, .at = m.at, .dir = mathx.fromHeading(m.aim), .class = .knight });
         for (r.foes.slice()) |*f| {
             if (!f.hostile()) continue;
@@ -974,8 +994,8 @@ pub const Run = struct {
         const n: f32 = @floatFromInt(s.shots);
         for (0..s.shots) |i| {
             const h = m.aim + (@as(f32, @floatFromInt(i)) - (n - 1) / 2) * spread;
-            const crit = r.rng.chance(s.crit);
-            _ = r.bolts.push(.{ .kind = kind, .at = m.at, .vel = mathx.scale(mathx.fromHeading(h), s.shot_speed), .dmg = dmg * (if (crit) s.crit_mult else 1), .pierce = s.pierce, .life = s.range / s.shot_speed * BOLT_OVERSHOOT, .splash = s.splash, .crit = crit, .big = s.big, .burn = s.burn_dps });
+            const c = r.roll(s.crit, s.crit_mult);
+            _ = r.bolts.push(.{ .kind = kind, .at = m.at, .vel = mathx.scale(mathx.fromHeading(h), s.shot_speed), .dmg = dmg * c.k, .pierce = s.pierce, .life = s.range / s.shot_speed * BOLT_OVERSHOOT, .splash = s.splash, .crit = c.crit, .big = s.big, .burn = s.burn_dps });
         }
         return true;
     }
@@ -987,7 +1007,7 @@ pub const Run = struct {
         return k;
     }
 
-/// What a hero's heals are multiplied by: every Verdant in the party, less every necromancer beside it.
+    /// What a hero's heals are multiplied by: every Verdant in the party, less every necromancer beside it.
     pub fn healOf(r: *const Run, m: *const Member) f32 {
         var k = r.healing();
         if (r.cursed(m.slot)) k *= 1 - hero.CURSE;
@@ -1036,7 +1056,7 @@ pub const Run = struct {
             }
             i += 1;
             for (r.foes.slice()) |*f| {
-                if (f.charm > 0 or mathx.dist2(f.at, c.at) > c.radius * c.radius) continue;
+                if (!f.hostile() or mathx.dist2(f.at, c.at) > c.radius * c.radius) continue;
                 if (!r.rng.chance(c.rate * STEP)) continue;
                 f.charm = c.charm_s * (if (f.kind == .boss) BOSS_CHARM else 1);
                 r.emit(.{ .kind = .charm, .at = f.at, .foe = f.kind });
@@ -1197,11 +1217,11 @@ pub const Run = struct {
             }
         }
         if (s.smite > 0) {
-            const crit = r.rng.chance(s.crit);
+            const c = r.roll(s.crit, s.crit_mult);
             r.emit(.{ .kind = .wave, .at = at, .amount = s.smite_reach });
             for (r.foes.slice()) |*f| {
                 if (!f.hostile() or mathx.dist2(f.at, at) > s.smite_reach * s.smite_reach) continue;
-                r.wound(f, s.smite * r.power(m) * (if (crit) s.crit_mult else 1), mathx.norm(mathx.sub(f.at, at)), false, crit);
+                r.wound(f, s.smite * r.power(m) * c.k, mathx.norm(mathx.sub(f.at, at)), false, c.crit);
                 r.emit(.{ .kind = .smite, .at = f.at });
             }
         }
@@ -1380,14 +1400,34 @@ pub const Run = struct {
     fn bury(r: *Run) void {
         var i: usize = 0;
         while (i < r.members.n) {
-            const m = r.members.items[i];
+            const m = &r.members.items[i];
             if (m.hp > 0) {
+                i += 1;
+                continue;
+            }
+            if (r.rng.chance(r.reviveChance())) {
+                m.revived = true;
+                m.stats = m.fieldStats();
+                m.hp = m.stats.max_hp;
+                r.emit(.{ .kind = .revive, .at = m.at, .class = m.hero.class });
                 i += 1;
                 continue;
             }
             r.emit(.{ .kind = .fall, .at = m.at, .class = m.hero.class });
             r.members.remove(i);
         }
+    }
+
+    /// The mean of every living necromancer's chance to raise a fallen hero; 0 with none alive.
+    pub fn reviveChance(r: *const Run) f32 {
+        var sum: f32 = 0;
+        var n: f32 = 0;
+        for (r.members.constSlice()) |o| {
+            if (o.hero.class != .necromancer or o.hp <= 0) continue;
+            sum += o.stats.revive;
+            n += 1;
+        }
+        return if (n > 0) sum / n else 0;
     }
 
     /// The hero whose level-up is waiting, its stale entries dropped.
@@ -1460,7 +1500,7 @@ pub const Run = struct {
     fn mergeInto(r: *Run, o: *Member, h: hero.Hero, share: f32) void {
         const keep = @max(share, o.hp / o.stats.max_hp);
         o.hero = hero.Hero.merged(o.hero, h);
-        o.stats = o.hero.stats();
+        o.stats = o.fieldStats();
         o.hp = o.stats.max_hp * keep;
         r.emit(.{ .kind = .merge, .at = o.at, .class = o.hero.class });
     }
@@ -1827,6 +1867,80 @@ test "a ghoul pressed against the lich is pushed out of it" {
     const d = mathx.len(mathx.sub(r.foes.items[1].at, r.foes.items[0].at));
     std.debug.print("ghoul and lich 1.20 apart, touching at {d:.2}: {d:.2} after one separation\n", .{ foe.row(.ghoul).radius + foe.row(.boss).radius, d });
     try std.testing.expectApproxEqAbs(foe.row(.ghoul).radius + foe.row(.boss).radius, d, 1e-4);
+}
+
+test "a fully pierced sniper arrow strikes each foe in its line once" {
+    const r = try testRun();
+    defer std.testing.allocator.destroy(r);
+    const a = r.memberAt(7).?;
+    a.hero.branch = .sniper;
+    a.hero.ups.set(.longbow, hero.up(.longbow).max);
+    a.refresh();
+    try std.testing.expectEqual(hero.PIERCE_MAX, a.stats.pierce);
+    for (0..hero.PIERCE_MAX + 2) |i| {
+        const f = plant(r, .husk, mathx.add(r.party, .{ 3 + @as(f32, @floatFromInt(i)) * 0.9, 20 }));
+        f.hp = 10_000;
+    }
+    _ = r.bolts.push(.{ .kind = .arrow, .at = mathx.add(r.party, .{ 2, 20 }), .vel = .{ a.stats.shot_speed, 0 }, .dmg = 10, .pierce = a.stats.pierce, .life = 2, .splash = 0 });
+    for (r.members.slice()) |*o| o.cd = 99;
+    var hits: usize = 0;
+    for (0..60) |_| {
+        r.bins.build(r.party, r.foes.constSlice());
+        r.flyBolts();
+        for (r.drainEvents()) |e| hits += @intFromBool(e.kind == .hit);
+    }
+    var most: f32 = 0;
+    for (r.foes.constSlice()) |f| most = @max(most, 10_000 - f.hp);
+    std.debug.print("pierce {d}: {d} hits along a line of {d}, the most any foe took {d:.1}\n", .{ a.stats.pierce, hits, r.foes.n, most });
+    try std.testing.expectEqual(@as(usize, hero.PIERCE_MAX) + 1, hits);
+    try std.testing.expectApproxEqAbs(10 * (1 - foe.row(.husk).armor), most, 1e-3);
+}
+
+test "a burn shows what it dealt to its last step, and a fresh one starts from its own dps" {
+    const r = try testRun();
+    defer std.testing.allocator.destroy(r);
+    const f = plant(r, .husk, mathx.add(r.party, .{ 12, 0 }));
+    f.hp = 100;
+    f.burn.apply(20, 1.2);
+    var shown: f32 = 0;
+    for (0..90) |_| {
+        r.tickDot(f, &f.burn, .burn);
+        for (r.drainEvents()) |e| shown += e.amount;
+    }
+    std.debug.print("a 20 dps burn for 1.2 s: dealt {d:.2}, shown {d:.2}\n", .{ 100 - f.hp, shown });
+    try std.testing.expectApproxEqAbs(100 - f.hp, shown, 1e-3);
+    f.burn.apply(4, 1);
+    try std.testing.expectEqual(@as(f32, 4), f.burn.dps);
+}
+
+test "while a necromancer lives a fallen hero may rise at half its max hp, two necromancers give their mean chance" {
+    const r = try testRun();
+    defer std.testing.allocator.destroy(r);
+    try std.testing.expectEqual(@as(f32, 0), r.reviveChance());
+    const a = r.enlist(hero.Hero.of(.necromancer), 5).?;
+    const one = r.reviveChance();
+    var b_hero = hero.Hero.of(.necromancer);
+    b_hero.ups.set(.undying, hero.up(.undying).max);
+    _ = r.enlist(b_hero, 0).?;
+    const two = r.reviveChance();
+    a.hp = 0;
+    const alone = r.reviveChance();
+    std.debug.print("revive chance: none 0, one necromancer {d:.2}, plus a maxed Undying {d:.2}, the first one dead {d:.2}\n", .{ one, two, alone });
+    try std.testing.expectApproxEqAbs((one + alone) / 2, two, 1e-5);
+    a.hp = a.stats.max_hp;
+    for (r.members.slice()) |*o| o.cd = 99;
+    const full = r.memberAt(1).?.stats.max_hp;
+    var tries: usize = 0;
+    const k = while (tries < 200) : (tries += 1) {
+        const m = r.memberAt(1) orelse r.enlist(hero.Hero.of(.knight), 1).?;
+        if (m.revived) break m;
+        m.hp = -1;
+        r.bury();
+    } else return error.NeverRose;
+    k.hero.ups.set(.tower, 1);
+    k.refresh();
+    std.debug.print("a knight of {d:.0} max hp rose after {d} fall(s) at {d:.0} hp; a Tower Shield later, max {d:.0}\n", .{ full, tries, k.hp, k.stats.max_hp });
+    try std.testing.expectApproxEqAbs(k.hero.stats().max_hp * hero.REVIVED_HP, k.stats.max_hp, 1e-3);
 }
 
 test "a martyr's lifeline never heals the martyr" {

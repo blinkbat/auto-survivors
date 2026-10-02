@@ -12,8 +12,8 @@ const NAV_REARM: f32 = 0.35;
 const NAV_DAS: f32 = 0.32;
 const NAV_ARR: f32 = 0.11;
 
-pub const MOVE_CAPTION = "L-stick";
 pub const NAV_CAPTION = "D-pad";
+pub const FULLSCREEN_CAPTION = "Alt+Enter";
 
 pub const Button = enum {
     a,

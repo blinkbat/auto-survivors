@@ -66,6 +66,7 @@ pub const Up = enum {
     bone_armor,
     grave_strength,
     deathly_precision,
+    undying,
 };
 
 pub const PROMOTE_AT: u8 = 5;
@@ -125,7 +126,7 @@ pub fn class(c: Class) ClassRow {
         .cleric => .{
             .name = "Cleric",
             .rule = "Sanctuary",
-            .rule_desc = "Heals every hero within one slot of its own.",
+            .rule_desc = "Heals itself and every adjacent hero.",
             .branches = .{ .saint, .martyr },
             .hp = 85,
             .dmg = 5,
@@ -169,7 +170,7 @@ pub fn class(c: Class) ClassRow {
         .bard => .{
             .name = "Bard",
             .rule = "Harp",
-            .rule_desc = "Raises the damage of the heroes beside it, not diagonal; sows music that turns foes to the party's side.",
+            .rule_desc = "Raises the damage of cardinally adjacent heroes; sows music that turns foes to the party's side.",
             .branches = null,
             .hp = 75,
             .dmg = 0,
@@ -180,7 +181,7 @@ pub fn class(c: Class) ClassRow {
         .necromancer => .{
             .name = "Necromancer",
             .rule = "Grave Chill",
-            .rule_desc = "Heroes beside it, not diagonal, are healed less; raises skeletons that fight on their own.",
+            .rule_desc = pct("Cardinally adjacent heroes are healed less; raises skeletons that fight on their own; while it lives, a fallen hero rises {d:.0}% of the time, at {d:.0}% max hp from then on.", .{ REVIVE * 100, REVIVED_HP * 100 }),
             .branches = null,
             .hp = 70,
             .dmg = 8,
@@ -252,6 +253,10 @@ const BONE_ARMOR: f32 = 0.3;
 const GRAVE_STRENGTH: f32 = 0.25;
 const SKEL_CRIT: f32 = 0.05;
 const DEATHLY: f32 = 0.08;
+/// A fallen hero's chance to rise while a necromancer lives, what each Undying adds, and its max hp once risen.
+const REVIVE: f32 = 0.25;
+const UNDYING: f32 = 0.1;
+pub const REVIVED_HP: f32 = 0.5;
 
 pub fn up(u: Up) UpRow {
     return switch (u) {
@@ -266,7 +271,7 @@ pub fn up(u: Up) UpRow {
         .longbow => .{ .class = .archer, .name = "Longbow", .desc = pct("+{d} range, arrows pierce one more", .{LONGBOW}), .max = 3 , .tag = .reach },
         .mending => .{ .class = .cleric, .name = "Mending", .desc = pct("+{d:.0}% healing", .{MENDING * 100}), .max = 5 , .tag = .healing },
         .vigor => .{ .class = .cleric, .name = "Vigor", .desc = pct("+{d} max hp", .{VIGOR_HP}), .max = 5 , .tag = .survival },
-        .smite => .{ .class = .cleric, .name = "Smite", .desc = pct("Each pulse burns foes beside it for {d}", .{SMITE}), .max = 4 , .tag = .damage },
+        .smite => .{ .class = .cleric, .name = "Smite", .desc = pct("Each pulse burns foes within {d} cells for {d}", .{ SMITE_REACH, SMITE }), .max = 4 , .tag = .damage },
         .radiance => .{ .class = .cleric, .name = "Radiance", .desc = pct("Pulses {d:.0}% faster", .{(1 - RADIANCE) * 100}), .max = 4 , .tag = .rate },
         .kindling => .{ .class = .pyromancer, .name = "Kindling", .desc = pct("+{d:.0}% firebolt damage", .{KINDLING * 100}), .max = 5 , .tag = .damage },
         .ember => .{ .class = .pyromancer, .name = "Ember", .desc = pct("Casts {d:.0}% faster", .{(1 - EMBER) * 100}), .max = 4 , .tag = .rate },
@@ -278,7 +283,7 @@ pub fn up(u: Up) UpRow {
         .hunters_mark => .{ .class = .archer, .name = "Hunter's Mark", .desc = pct("+{d:.0}% damage to brutes and the lich", .{HUNTERS_MARK * 100}), .max = 3 , .tag = .damage },
         .wide_volley => .{ .class = .archer, .name = "Wide Volley", .desc = "The half of the field it fires into widens", .max = 2 , .tag = .reach },
         .aegis => .{ .class = .cleric, .name = "Aegis", .desc = pct("Heroes in its Sanctuary take {d:.0}% less damage", .{AEGIS * 100}), .max = 3 , .tag = .survival },
-        .lifeline => .{ .class = .cleric, .name = "Lifeline", .desc = "Each pulse also heals the most wounded hero anywhere, by half", .max = 1 , .tag = .healing },
+        .lifeline => .{ .class = .cleric, .name = "Lifeline", .desc = pct("Each pulse also heals the most wounded hero anywhere, for {d:.0}% of its heal", .{LIFELINE * 100}), .max = 1 , .tag = .healing },
         .consecrate => .{ .class = .cleric, .name = "Consecrate", .desc = pct("Smite reaches {d} further", .{CONSECRATE}), .max = 3 , .tag = .reach },
         .fireball => .{ .class = .pyromancer, .name = "Fireball", .desc = pct("Firebolts burst {d} wider", .{FIREBALL}), .max = 3 , .tag = .area },
         .twin_flame => .{ .class = .pyromancer, .name = "Twin Flame", .desc = "One more firebolt a cast", .max = 2 , .tag = .area },
@@ -293,12 +298,13 @@ pub fn up(u: Up) UpRow {
         .venom => .{ .class = .druid, .name = "Venom", .desc = pct("Lashes poison foes, {d} a second for {d}s", .{ VENOM_DPS, POISON_S }), .max = 4 , .tag = .status },
         .enchanting_air => .{ .class = .bard, .name = "Enchanting Air", .desc = pct("Foes in its music are turned {d:.0}% more often", .{ENCHANTING / CHARM_RATE * 100}), .max = 4 , .tag = .control },
         .wide_song => .{ .class = .bard, .name = "Wide Song", .desc = pct("Its music spreads {d} further", .{WIDE_SONG}), .max = 4 , .tag = .reach },
-        .crescendo => .{ .class = .bard, .name = "Crescendo", .desc = pct("+{d:.0}% damage to the heroes beside it", .{CRESCENDO * 100}), .max = 4 , .tag = .damage },
+        .crescendo => .{ .class = .bard, .name = "Crescendo", .desc = pct("+{d:.0}% damage to cardinally adjacent heroes", .{CRESCENDO * 100}), .max = 4 , .tag = .damage },
         .tempo => .{ .class = .bard, .name = "Tempo", .desc = pct("Plays {d:.0}% more often", .{(1 - TEMPO) * 100}), .max = 4 , .tag = .rate },
         .legion => .{ .class = .necromancer, .name = "Legion", .desc = "One more skeleton at a time", .max = 3 , .tag = .count },
         .bone_armor => .{ .class = .necromancer, .name = "Bone Armor", .desc = pct("+{d:.0}% skeleton hp", .{BONE_ARMOR * 100}), .max = 4 , .tag = .survival },
         .grave_strength => .{ .class = .necromancer, .name = "Grave Strength", .desc = pct("+{d:.0}% skeleton damage", .{GRAVE_STRENGTH * 100}), .max = 4 , .tag = .damage },
         .deathly_precision => .{ .class = .necromancer, .name = "Deathly Precision", .desc = pct("+{d:.0}% skeleton critical chance", .{DEATHLY * 100}), .max = 4 , .tag = .crit },
+        .undying => .{ .class = .necromancer, .name = "Undying", .desc = pct("+{d:.0}% chance a fallen hero rises", .{UNDYING * 100}), .max = 4, .tag = .survival },
     };
 }
 
@@ -313,6 +319,7 @@ const SNIPER_DMG: f32 = 2.6;
 const SNIPER_CD: f32 = 1.7;
 const SNIPER_RANGE: f32 = 1.4;
 const SNIPER_PIERCE: u8 = 6;
+pub const PIERCE_MAX: u8 = up(.longbow).max + SNIPER_PIERCE;
 const SNIPER_SPEED: f32 = 1.5;
 const SKIRMISH_CD: f32 = 0.8;
 const SAINT_HEAL: f32 = 1.3;
@@ -383,6 +390,8 @@ pub const Stats = struct {
     skel_hp: f32 = 0,
     skel_dmg: f32 = 0,
     skel_crit: f32 = 0,
+    /// Chance a fallen hero rises while it lives.
+    revive: f32 = 0,
 };
 
 const ARROW_SPEED: f32 = 13;
@@ -519,6 +528,7 @@ pub const Hero = struct {
                 s.skel_hp = SKEL_HP * hk * (1 + BONE_ARMOR * h.n(.bone_armor));
                 s.skel_dmg = s.dmg * (1 + GRAVE_STRENGTH * h.n(.grave_strength));
                 s.skel_crit = SKEL_CRIT + DEATHLY * h.n(.deathly_precision);
+                s.revive = REVIVE + UNDYING * h.n(.undying);
             },
         }
         return s;
@@ -573,7 +583,7 @@ pub fn ups(c: Class) []const Up {
         .mystic => &.{ .quickening, .stillness, .expanse, .shatter },
         .druid => &.{ .long_tendrils, .thicket, .verdant, .venom },
         .bard => &.{ .enchanting_air, .wide_song, .crescendo, .tempo },
-        .necromancer => &.{ .legion, .bone_armor, .grave_strength, .deathly_precision },
+        .necromancer => &.{ .legion, .bone_armor, .grave_strength, .deathly_precision, .undying },
     };
 }
 

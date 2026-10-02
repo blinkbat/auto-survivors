@@ -81,7 +81,7 @@ pub fn cueOf(k: run.EventKind) ?Cue {
         .boom => .boom,
         .strum => .strum,
         .charm => .charm,
-        .raise => .raise,
+        .raise, .revive => .raise,
         .crumble => .crumble,
         .boss => .boss,
         .smite, .burn, .poison, .lifeline, .wave => null,

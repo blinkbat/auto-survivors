@@ -20,8 +20,8 @@ def esc(s):
 
 
 def num(v, places=2):
-    s = f"{v:.{places}f}".rstrip("0").rstrip(".")
-    return s if s else "0"
+    s = f"{v:.{places}f}"
+    return s.rstrip("0").rstrip(".") if "." in s else s
 
 
 def main():

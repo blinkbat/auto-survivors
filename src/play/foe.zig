@@ -36,7 +36,7 @@ pub fn row(k: Kind) Row {
     return switch (k) {
         .ghoul => .{ .name = "ghoul", .hp = 14, .speed = 1.7, .dmg = 13, .radius = 0.34, .xp = 1 },
         .bat => .{ .name = "bat", .hp = 6, .speed = 2.9, .dmg = 8, .radius = 0.28, .xp = 1, .mass = 0.6 },
-        .spitter => .{ .name = "spitter", .hp = 20, .speed = 1.3, .dmg = 10, .radius = 0.38, .xp = 2, .keep = 5.5, .spit_cd = 4, .spit_dmg = 16 },
+        .spitter => .{ .name = "spitter", .hp = 20, .speed = 1.3, .dmg = 10, .radius = 0.38, .xp = 2, .keep = 5.5, .spit_cd = 6, .spit_dmg = 10 },
         .husk => .{ .name = "husk", .hp = 70, .speed = 1.0, .dmg = 16, .radius = 0.42, .xp = 3, .mass = 2.5 },
         .shellback => .{ .name = "shellback", .hp = 110, .speed = 0.85, .dmg = 18, .radius = 0.55, .xp = 5, .armor = 0.35, .mass = 3.5 },
         .charger => .{ .name = "charger", .hp = 26, .speed = 4.6, .dmg = 18, .radius = 0.38, .xp = 2, .turn = 1.3, .mass = 1.5 },

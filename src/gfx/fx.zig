@@ -306,6 +306,11 @@ pub const Fx = struct {
                 self.throw(.smoke, e.at, 0.1, .{ 0, 0 }, 3, 0.8, ROUND, GRAVE_SMOKE);
                 self.throw(.glint, e.at, 0.2, .{ 0, 0 }, 8, 0.8, ROUND, GRAVE_GLOW);
             },
+            .revive => {
+                self.burst(e.at, 0.2, 1.6, 0.8, .{ 0.4, 1.0, 0.6 }, 0.6);
+                self.throw(.smoke, e.at, 0.1, .{ 0, 0 }, 4, 1, ROUND, GRAVE_SMOKE);
+                self.throw(.glint, e.at, 0.3, .{ 0, 0 }, 18, 1.2, ROUND, GRAVE_GLOW);
+            },
             .crumble => {
                 self.throw(.chunk, e.at, 0.4, .{ 0, 0 }, 9, 2.2, ROUND, BONE);
                 self.throw(.mist, e.at, 0.3, .{ 0, 0 }, 2, 1, ROUND, BONE);

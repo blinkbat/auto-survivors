@@ -343,6 +343,14 @@ def icons():
         d.point([(5, 6), (6, 6), (9, 6), (10, 6)], fill=(60, 220, 120, 255))
         d.ellipse([10, 9, 15, 14], outline=RED, width=1)
 
+    @make("undying")
+    def _(d):
+        d.rectangle([3, 9, 12, 15], fill=(110, 106, 118, 255))
+        d.pieslice([3, 4, 12, 13], 180, 360, fill=(110, 106, 118, 255))
+        d.rectangle([7, 7, 8, 13], fill=(60, 220, 120, 255))
+        d.rectangle([5, 9, 10, 10], fill=(60, 220, 120, 255))
+        d.point([(2, 2), (13, 1), (8, 0)], fill=(180, 255, 200, 255))
+
     @make("bulwark")
     def _(d):
         shield(d, 1, 1, 13, 14, BLUE, GOLD)

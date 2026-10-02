@@ -68,9 +68,12 @@ const VINE_GROW_S: f32 = 0.35;
 const VINE_LUNGE: f32 = 0.3;
 const ROOTS = look.rgb(0x1e2e14);
 const WARN = look.rgb(0xe8423a);
-const ROOT_EDGE = look.rgb(0x4e7a30);
 const POISON_RATE: f32 = 6;
 const NOTES: usize = 6;
+const NOTE_RGB = Rgb{ 1.0, 0.7, 0.95 };
+/// Seconds a bard's music takes to fade in and to fade out.
+const CLOUD_IN_S: f32 = 0.3;
+const CLOUD_OUT_S: f32 = 0.6;
 /// Green motes a second off a hero mending itself.
 const MEND_RATE: f32 = 9;
 /// Xp past which an orb is drawn larger.
@@ -455,8 +458,8 @@ fn optionsStep(g: *Game) void {
     if (d != 0) {
         const by = @as(f32, @floatFromInt(d)) * VOL_STEP;
         switch (OPTION_ROWS[g.option_row]) {
-            .music => g.audio.setMusic(@round((g.audio.music_vol + by) / VOL_STEP) * VOL_STEP),
-            .sfx => g.audio.setSfx(@round((g.audio.sfx_vol + by) / VOL_STEP) * VOL_STEP),
+            .music => g.audio.setMusic(stepped(g.audio.music_vol, by)),
+            .sfx => g.audio.setSfx(stepped(g.audio.sfx_vol, by)),
             else => {},
         }
     }
@@ -470,6 +473,11 @@ fn optionsStep(g: *Game) void {
         .fullscreen => rl.toggleBorderlessWindowed(),
         .back => g.mode = g.options_from,
     }
+}
+
+/// A volume moved `by`, landing on a whole `VOL_STEP`.
+fn stepped(v: f32, by: f32) f32 {
+    return @round((v + by) / VOL_STEP) * VOL_STEP;
 }
 
 pub const Brazier = struct { at: V, seed: u32 };
@@ -622,14 +630,14 @@ fn drawClouds(g: *Game, v: View) void {
     for (g.run.clouds.constSlice()) |c| {
         if (!inView(v, c.at, c.radius + 1)) continue;
         const p = g.px(c.at);
-        const a = mathx.smooth(c.life / 0.6) * mathx.smooth((hero.CLOUD_S - c.life) / 0.3);
+        const a = mathx.smooth(c.life / CLOUD_OUT_S) * mathx.smooth((hero.CLOUD_S - c.life) / CLOUD_IN_S);
         const rad = c.radius * CELL;
         g.light.glow(p[0], p[1], rad * 1.1, .{ 0.8, 0.35, 0.7 }, 0.25 * a);
         for (0..NOTES) |i| {
             const h = @as(f32, @floatFromInt(i)) / @as(f32, @floatFromInt(NOTES)) * mathx.TAU + g.t * 0.7;
             const bob = @sin(g.t * 3 + @as(f32, @floatFromInt(i)) * 1.7) * 6;
             const q = mathx.add(p, mathx.scale(mathx.fromHeading(h), rad * 0.6));
-            drawNote(q[0], q[1] + bob, light.colourOf(.{ 1.0, 0.7, 0.95 }, 0.9 * a));
+            drawNote(q[0], q[1] + bob, light.colourOf(NOTE_RGB, 0.9 * a));
         }
     }
 }
@@ -699,7 +707,6 @@ fn drawRoots(g: *Game, v: View) void {
         const a = growth(vine);
         const p = g.px(.{ vine.at[0] - 0.5, vine.at[1] - 0.5 });
         rl.drawRectangleRounded(.{ .x = p[0] + 3, .y = p[1] + 3, .width = CELL - 6, .height = CELL - 6 }, 0.3, 6, look.fade(ROOTS, 0.75 * a));
-        rl.drawRectangleRoundedLinesEx(.{ .x = p[0] + 3, .y = p[1] + 3, .width = CELL - 6, .height = CELL - 6 }, 0.3, 6, 2, look.fade(ROOT_EDGE, 0.8 * a));
     }
 }
 
@@ -831,7 +838,7 @@ fn drawFires(g: *Game, v: View, fires: []const Brazier) void {
         if (f.charm <= 0 or !inView(v, f.at, 1)) continue;
         const p = g.px(f.at);
         g.light.glow(p[0], p[1] - CELL * 0.25, CELL * 0.55, .{ 1.0, 0.45, 0.85 }, 0.45);
-        drawNote(p[0] + 10, p[1] - CELL * 0.8 + @sin(g.t * 5 + @as(f32, @floatFromInt(f.uid))) * 3, light.colourOf(.{ 1.0, 0.7, 0.95 }, 1));
+        drawNote(p[0] + 10, p[1] - CELL * 0.8 + @sin(g.t * 5 + @as(f32, @floatFromInt(f.uid))) * 3, light.colourOf(NOTE_RGB, 1));
     }
     for (r.foes.constSlice()) |f| {
         if (f.poison.t <= 0 or !inView(v, f.at, 1)) continue;
@@ -862,7 +869,7 @@ fn drawSlashes(g: *Game) void {
         const t = 1 - m.swing / run.SWING_S;
         const sweep = mathx.smooth(t / SLASH_SWEEP);
         const fade = 1 - mathx.smooth((t - SLASH_SWEEP) / (1 - SLASH_SWEEP));
-        const way: f32 = if (@as(u32, @intFromFloat(m.cd * 1000)) % 2 == 0) 1 else -1;
+        const way: f32 = if (m.swings % 2 == 0) 1 else -1;
         const lead = m.aim + way * (sweep - 0.5) * m.stats.cleave * 2;
         const p = g.px(mathx.add(m.at, mathx.scale(mathx.fromHeading(m.aim), lungeOf(t))));
         const reach = (m.stats.range + 0.15) * CELL;
@@ -882,7 +889,8 @@ fn drawSlashes(g: *Game) void {
     }
 }
 
-/// Embers off every fire, each frame: bolts in flight, burning foes, the ring and the braziers in view.
+/// Motes each frame: embers off bolts in flight, burning foes and the braziers in view; bubbles off poisoned foes;
+/// green off heroes mending themselves.
 fn kindle(g: *Game, dt: f32) void {
     const r = g.run;
     const v = viewOf(g);
@@ -900,19 +908,8 @@ fn kindle(g: *Game, dt: f32) void {
     for (braziers(v.lo, v.hi, &buf)) |b| g.fx.smoulder(.{ b.at[0], b.at[1] - 0.05 }, BRAZIER_FIRE + 0.1, EMBER_BRAZIER, 0.12, dt);
 }
 
-/// The front of the formation and its front-centre slot, under the bodies' bars.
-fn drawFacing(g: *Game) void {
-    const r = g.run;
-    const d = r.facing.delta();
-    const dir = mathx.norm(.{ @floatFromInt(d.x), @floatFromInt(d.y) });
-    const front = r.slotAt(formation.frontCentre(r.facing));
-    const at = g.px(mathx.add(front, mathx.scale(dir, 0.85)));
-    const deg = degOf(r.facing.heading());
-    rl.drawPoly(vec(at), 3, 19, deg, look.fade(look.BG, 0.75));
-    rl.drawPoly(vec(at), 3, 13, deg, look.BRIGHT);
-}
-
-fn degOf(heading: f32) f32 {
+/// raylib's degrees, for a vertex pointing along `heading`.
+pub fn degOf(heading: f32) f32 {
     return heading * 180 / std.math.pi - 90;
 }
 
@@ -954,7 +951,6 @@ pub fn drawWorld(g: *Game) void {
     g.light.drawMap(o, CELL);
     drawOrbs(g, v);
     for (figs) |f| g.light.drawBody(f.tex, f.dest, f.left, f.mid, f.shine, f.flash);
-    drawFacing(g);
     drawShots(g, v);
     drawShells(g, v);
     drawClouds(g, v);
