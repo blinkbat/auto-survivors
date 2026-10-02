@@ -61,7 +61,6 @@ const EMBER_BRAZIER: f32 = 6;
 const ZOOM: f32 = 2.6;
 const ZOOM_EASE: f32 = 6;
 const ZOOM_LIFT: f32 = 0.25;
-const WARD_A: f32 = 0.4;
 /// Seconds before a Time Stop ends that its frost starts to fade.
 const FROZEN_FADE: f32 = 0.4;
 /// Seconds a vine takes to grow in and to wither, and cells its lash lunges.
@@ -616,7 +615,7 @@ fn skeletonPose(k: run.Skeleton) Pose {
     return p;
 }
 
-/// A bard's music: a ring at its reach, notes drifting in it, fading as it ends.
+/// A bard's music: a glow at its reach, notes drifting in it, fading as it ends.
 fn drawClouds(g: *Game, v: View) void {
     rl.beginBlendMode(.additive);
     defer rl.endBlendMode();
@@ -626,7 +625,6 @@ fn drawClouds(g: *Game, v: View) void {
         const a = mathx.smooth(c.life / 0.6) * mathx.smooth((hero.CLOUD_S - c.life) / 0.3);
         const rad = c.radius * CELL;
         g.light.glow(p[0], p[1], rad * 1.1, .{ 0.8, 0.35, 0.7 }, 0.25 * a);
-        rl.drawRing(vec(p), rad - 2, rad + 1, 0, 360, 48, light.colourOf(.{ 1.0, 0.55, 0.9 }, 0.55 * a));
         for (0..NOTES) |i| {
             const h = @as(f32, @floatFromInt(i)) / @as(f32, @floatFromInt(NOTES)) * mathx.TAU + g.t * 0.7;
             const bob = @sin(g.t * 3 + @as(f32, @floatFromInt(i)) * 1.7) * 6;
@@ -822,7 +820,6 @@ fn drawFires(g: *Game, v: View, fires: []const Brazier) void {
         const p = g.px(f.at);
         const a = @min(1, f.frozen / FROZEN_FADE);
         g.light.glow(p[0], p[1] - CELL * 0.25, CELL * 0.55, .{ 0.45, 0.65, 1.0 }, 0.55 * a);
-        rl.drawRing(vec(.{ p[0], p[1] + 4 }), CELL * 0.3, CELL * 0.34, 0, 360 * a, 24, light.colourOf(.{ 0.6, 0.8, 1.0 }, 0.8 * a));
     }
     for (r.foes.constSlice()) |f| {
         if (f.burn.t <= 0 or !inView(v, f.at, 1)) continue;
@@ -919,27 +916,6 @@ fn degOf(heading: f32) f32 {
     return heading * 180 / std.math.pi - 90;
 }
 
-/// What would otherwise be unseen: the arc a front-row knight's Shield Wall covers, and the half of the field
-/// each archer fires into.
-fn drawWards(g: *Game) void {
-    const r = g.run;
-    const c = vec(g.px(r.party));
-    rl.beginBlendMode(.additive);
-    defer rl.endBlendMode();
-    const arc = r.shieldArc();
-    if (arc > 0) {
-        const h = r.facing.heading();
-        const shimmer = 0.8 + 0.2 * @sin(g.t * 4);
-        rl.drawRing(c, run.BLOCK_R * CELL - 3, run.BLOCK_R * CELL + 3, degOf(h - arc), degOf(h + arc), 32, light.colourOf(.{ 0.45, 0.65, 1.0 }, WARD_A * shimmer));
-    }
-    for (r.members.constSlice()) |m| {
-        if (m.hero.class != .archer) continue;
-        const f = run.Run.field(&m) orelse continue;
-        const rad = run.BLOCK_R * CELL + 8;
-        rl.drawRing(c, rad - 2, rad + 2, degOf(f.heading - f.half), degOf(f.heading + f.half), 32, light.colourOf(.{ 0.5, 0.95, 0.4 }, WARD_A * 0.7));
-    }
-}
-
 fn drawBars(g: *Game) void {
     const r = g.run;
     for (r.skeletons.constSlice()) |k| {
@@ -976,7 +952,6 @@ pub fn drawWorld(g: *Game) void {
     g.fx.drawGround(o, CELL);
     for (figs) |f| g.light.drawShadows(f.tex, f.dest, f.left, f.mid, f.shine);
     g.light.drawMap(o, CELL);
-    drawWards(g);
     drawOrbs(g, v);
     for (figs) |f| g.light.drawBody(f.tex, f.dest, f.left, f.mid, f.shine, f.flash);
     drawFacing(g);

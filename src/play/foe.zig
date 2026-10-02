@@ -36,7 +36,7 @@ pub fn row(k: Kind) Row {
     return switch (k) {
         .ghoul => .{ .name = "ghoul", .hp = 14, .speed = 1.7, .dmg = 13, .radius = 0.34, .xp = 1 },
         .bat => .{ .name = "bat", .hp = 6, .speed = 2.9, .dmg = 8, .radius = 0.28, .xp = 1, .mass = 0.6 },
-        .spitter => .{ .name = "spitter", .hp = 20, .speed = 1.3, .dmg = 10, .radius = 0.38, .xp = 2, .keep = 5.5, .spit_cd = 2.6, .spit_dmg = 16 },
+        .spitter => .{ .name = "spitter", .hp = 20, .speed = 1.3, .dmg = 10, .radius = 0.38, .xp = 2, .keep = 5.5, .spit_cd = 4, .spit_dmg = 16 },
         .husk => .{ .name = "husk", .hp = 70, .speed = 1.0, .dmg = 16, .radius = 0.42, .xp = 3, .mass = 2.5 },
         .shellback => .{ .name = "shellback", .hp = 110, .speed = 0.85, .dmg = 18, .radius = 0.55, .xp = 5, .armor = 0.35, .mass = 3.5 },
         .charger => .{ .name = "charger", .hp = 26, .speed = 4.6, .dmg = 18, .radius = 0.38, .xp = 2, .turn = 1.3, .mass = 1.5 },
@@ -44,7 +44,7 @@ pub fn row(k: Kind) Row {
         .imp => .{ .name = "imp", .hp = 16, .speed = 1.6, .dmg = 8, .radius = 0.3, .xp = 2, .keep = 5, .lob = .{ .cd = 3.2, .range = 8, .fuse = 0.9, .radius = 0.8, .dmg = 12, .warned = false } },
         .warlock => .{ .name = "warlock", .hp = 34, .speed = 1.1, .dmg = 10, .radius = 0.38, .xp = 4, .keep = 7, .lob = .{ .cd = 6, .range = 10, .fuse = 1.8, .radius = 2.1, .dmg = 34, .warned = true } },
         .brute => .{ .name = "brute", .hp = 240, .speed = 1.2, .dmg = 20, .radius = 0.62, .xp = 12, .mass = 4, .scales = 0.4 },
-        .boss => .{ .name = "lich", .hp = 14000, .speed = 1.1, .dmg = 75, .radius = 1.05, .xp = 0, .keep = 3.5, .spit_cd = 2.8, .spit_dmg = 34, .mass = 20, .scales = 0 },
+        .boss => .{ .name = "lich", .hp = 14000, .speed = 1.1, .dmg = 75, .radius = 1.05, .xp = 0, .keep = 3.5, .spit_cd = 4.2, .spit_dmg = 34, .mass = 20, .scales = 0 },
     };
 }
 

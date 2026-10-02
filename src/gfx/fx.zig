@@ -64,8 +64,6 @@ pub const Ring = struct {
     max: f32,
     colour: Rgb,
     a: f32,
-    /// A burst fills; a ring is a band this share of its radius.
-    band: f32,
 };
 
 pub const Beam = struct { from: V, to: V, life: f32 = 0, max: f32 = BEAM_S, colour: Rgb = .{ 0.4, 1.0, 0.45 }, width: f32 = 7 };
@@ -229,8 +227,8 @@ pub const Fx = struct {
         }
     }
 
-    fn burst(self: *Fx, at: V, r0: f32, r1: f32, s: f32, c: Rgb, a: f32, band: f32) void {
-        self.ring(.{ .at = at, .r0 = r0, .r1 = r1, .life = s, .max = s, .colour = c, .a = a, .band = band });
+    fn burst(self: *Fx, at: V, r0: f32, r1: f32, s: f32, c: Rgb, a: f32) void {
+        self.ring(.{ .at = at, .r0 = r0, .r1 = r1, .life = s, .max = s, .colour = c, .a = a });
     }
 
     fn bleed(self: *Fx, at: V, dir: V, k: f32, col: rl.Color, kill: bool) void {
@@ -253,7 +251,7 @@ pub const Fx = struct {
                 self.bleed(e.at, e.dir, bulk(e.foe) * @as(f32, if (e.big) 1.8 else 1), col, false);
                 if (e.big) {
                     self.throw(.spark, e.at, 0.5, e.dir, 10, 5, 0.8, SPARK_HOT);
-                    self.burst(e.at, 0.1, 0.7, 0.18, .{ 1, 0.9, 0.6 }, 0.9, 1);
+                    self.burst(e.at, 0.1, 0.7, 0.18, .{ 1, 0.9, 0.6 }, 0.9);
                 }
                 if (e.crit) self.jolt(CRIT_SHAKE);
             },
@@ -266,28 +264,28 @@ pub const Fx = struct {
             },
             .fall => {
                 self.bleed(e.at, .{ 0, 0 }, 2.5, look.matter(null), true);
-                self.burst(e.at, 0.2, 1.8, 0.6, .{ 1, 0.3, 0.2 }, 0.7, 0.25);
+                self.burst(e.at, 0.2, 1.8, 0.6, .{ 1, 0.3, 0.2 }, 0.35);
             },
             .block => {
                 self.throw(.spark, e.at, 0.5, mathx.scale(e.dir, -1), 12, 4.5, 0.9, look.SHIELD);
-                self.burst(e.at, 0.1, 0.65, 0.22, .{ 0.6, 0.8, 1.0 }, 1, 1);
+                self.burst(e.at, 0.1, 0.65, 0.22, .{ 0.6, 0.8, 1.0 }, 1);
             },
             .blast => {
                 const k: f32 = if (e.big) @as(f32, 1.8) else 1;
                 self.throw(.ember, e.at, 0.4, .{ 0, 0 }, @intFromFloat(16 * k), 3.4, ROUND, EMBER_HOT);
                 self.throw(.spark, e.at, 0.4, e.dir, @intFromFloat(8 * k), 5, 1.1, SPARK_HOT);
                 self.throw(.smoke, e.at, 0.4, .{ 0, 0 }, 2, 1, ROUND, SMOKE);
-                self.burst(e.at, 0.15, @max(e.amount, 0.6) * 1.1 * k, 0.28, .{ 1.0, 0.55, 0.18 }, 1, 1);
-                self.burst(e.at, 0.1, 0.45 * k, 0.12, .{ 1.0, 0.95, 0.7 }, 1, 1);
+                self.burst(e.at, 0.15, @max(e.amount, 0.6) * 1.1 * k, 0.28, .{ 1.0, 0.55, 0.18 }, 1);
+                self.burst(e.at, 0.1, 0.45 * k, 0.12, .{ 1.0, 0.95, 0.7 }, 1);
                 self.stain(e.at, 0.3 * k, .{ 1, 0 }, 1, SCORCH);
             },
             .cast => self.throw(.ember, e.at, 0.7, .{ 0, 0 }, 5, 1.4, ROUND, EMBER_HOT),
-            .heal => self.burst(e.at, 0.1, 0.5, 0.35, .{ 0.5, 1.0, 0.45 }, 0.5, 1),
-            .pulse => self.burst(e.at, 0.3, e.amount, 0.55, .{ 1.0, 0.92, 0.6 }, 0.4, 0.12),
-            .wave => self.burst(e.at, 0.3, e.amount, 0.35, .{ 1.0, 0.75, 0.3 }, 0.5, 0.3),
+            .heal => self.burst(e.at, 0.1, 0.5, 0.35, .{ 0.5, 1.0, 0.45 }, 0.5),
+            .pulse => self.burst(e.at, 0.3, e.amount, 0.55, .{ 1.0, 0.92, 0.6 }, 0.2),
+            .wave => self.burst(e.at, 0.3, e.amount, 0.35, .{ 1.0, 0.75, 0.3 }, 0.25),
             .lifeline => self.beam(e.from, e.at),
             .sprout => {
-                self.burst(e.at, 0.1, 0.7, 0.35, .{ 0.45, 0.9, 0.35 }, 0.6, 0.25);
+                self.burst(e.at, 0.1, 0.7, 0.35, .{ 0.45, 0.9, 0.35 }, 0.3);
                 self.throw(.glint, e.at, 0.1, .{ 0, 0 }, 10, 1.2, ROUND, LEAF);
                 self.throw(.mist, e.at, 0.1, .{ 0, 0 }, 2, 1, ROUND, SOIL);
             },
@@ -296,15 +294,15 @@ pub const Fx = struct {
             },
             .poison => self.throw(.glint, e.at, 0.4, .{ 0, 0 }, 3, 0.6, ROUND, VENOM),
             .strum => {
-                self.burst(e.at, 0.2, e.amount, 0.5, .{ 1.0, 0.55, 0.9 }, 0.7, 0.08);
+                self.burst(e.at, 0.2, e.amount, 0.5, .{ 1.0, 0.55, 0.9 }, 0.35);
                 self.throw(.glint, e.at, 0.3, .{ 0, 0 }, 14, e.amount * 1.4, ROUND, SONG);
             },
             .charm => {
                 self.throw(.glint, e.at, 0.6, .{ 0, 0 }, 8, 0.8, ROUND, SONG);
-                self.burst(e.at, 0.1, 0.6, 0.3, .{ 1.0, 0.5, 0.85 }, 0.8, 1);
+                self.burst(e.at, 0.1, 0.6, 0.3, .{ 1.0, 0.5, 0.85 }, 0.8);
             },
             .raise => {
-                self.burst(e.at, 0.1, 0.8, 0.45, .{ 0.4, 1.0, 0.6 }, 0.7, 1);
+                self.burst(e.at, 0.1, 0.8, 0.45, .{ 0.4, 1.0, 0.6 }, 0.7);
                 self.throw(.smoke, e.at, 0.1, .{ 0, 0 }, 3, 0.8, ROUND, GRAVE_SMOKE);
                 self.throw(.glint, e.at, 0.2, .{ 0, 0 }, 8, 0.8, ROUND, GRAVE_GLOW);
             },
@@ -314,23 +312,21 @@ pub const Fx = struct {
             },
             .boom => {
                 const hot: light.Rgb = if (e.big) .{ 0.85, 0.3, 1.0 } else .{ 1.0, 0.5, 0.15 };
-                self.burst(e.at, 0.2, e.amount, 0.35, hot, 1, 1);
-                self.burst(e.at, e.amount * 0.6, e.amount * 1.15, 0.4, hot, 0.7, 0.2);
+                self.burst(e.at, 0.2, e.amount, 0.35, hot, 1);
                 self.throw(.ember, e.at, 0.2, .{ 0, 0 }, @intFromFloat(10 + 12 * e.amount), 2.5 * e.amount, ROUND, EMBER_HOT);
                 self.throw(.smoke, e.at, 0.2, .{ 0, 0 }, @intFromFloat(2 + 2 * e.amount), e.amount, ROUND, SMOKE);
                 self.stain(e.at, 0.45 * e.amount, .{ 1, 0 }, 1, SCORCH);
             },
             .stop => {
-                self.burst(e.at, 0.2, e.amount, 0.45, .{ 0.6, 0.8, 1.0 }, 0.9, 0.06);
-                self.burst(e.at, e.amount * 0.9, e.amount, 0.7, .{ 0.5, 0.7, 1.0 }, 0.25, 1);
+                self.burst(e.at, 0.2, e.amount, 0.45, .{ 0.6, 0.8, 1.0 }, 0.45);
                 self.throw(.glint, e.at, 0.3, .{ 0, 0 }, 16, e.amount * 1.6, ROUND, STOPPED);
             },
             .level => {
-                self.burst(e.at, 0.2, 1.2, 0.7, .{ 1.0, 0.85, 0.4 }, 0.7, 0.3);
+                self.burst(e.at, 0.2, 1.2, 0.7, .{ 1.0, 0.85, 0.4 }, 0.35);
                 self.throw(.spark, e.at, 0.2, .{ 0, 0 }, 14, 2, ROUND, look.BRIGHT);
             },
-            .recruit => self.burst(e.at, 0.4, 3.0, 0.9, .{ 1.0, 0.85, 0.4 }, 0.6, 0.15),
-            .merge => self.burst(e.at, 0.3, 2.0, 0.8, .{ 0.9, 0.95, 1.0 }, 0.8, 0.2),
+            .recruit => self.burst(e.at, 0.4, 3.0, 0.9, .{ 1.0, 0.85, 0.4 }, 0.3),
+            .merge => self.burst(e.at, 0.3, 2.0, 0.8, .{ 0.9, 0.95, 1.0 }, 0.4),
             .smite => self.throw(.spark, e.at, 0.5, .{ 0, 0 }, 3, 1.5, ROUND, look.BRIGHT),
             .swing, .boss, .burn, .loose, .spit, .lob => {},
         }
@@ -446,11 +442,7 @@ pub const Fx = struct {
             const x = r.at[0] * cell - cam[0];
             const y = r.at[1] * cell - cam[1];
             const a = r.a * (1 - t);
-            if (r.band >= 1) {
-                l.glow(x, y, rad, r.colour, a);
-            } else {
-                rl.drawRing(.{ .x = x, .y = y }, rad * (1 - r.band), rad, 0, 360, 48, light.colourOf(r.colour, a));
-            }
+            l.glow(x, y, rad, r.colour, a);
         }
         for (self.beams) |b| {
             if (b.life <= 0) continue;

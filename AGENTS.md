@@ -44,6 +44,7 @@ Prefer no comments in code. Don't make product/design decisions — ask. Don't c
 - **`gfx/numbers.zig` IS EVERY FLOATING NUMBER**, from the amount on each hit, hurt, burn, poison and heal event:
   white hits (opacity by amount), gold crits (whole), red damage to the party, orange burning, yellow-green poison,
   pale green healing.
-- **EVERY ABILITY IS SEEN**: an effect without its own body draws a tell (`game.drawWards`: Shield Wall's arc, each
-  archer's field; `fx`: Sanctuary's reach, Smite's wave, Lifeline's beam, Second Wind's motes).
+- **EVERY ABILITY IS SEEN**: an effect without its own body draws a tell (`fx`: Shield Wall's block, Sanctuary's reach,
+  Smite's wave, Lifeline's beam, Second Wind's motes). No outlined rings or arcs: a reach is a glow; only a warned
+  shell's landing gets a ring.
 - **EVERY DRAWN STRING IS ASCII.**

@@ -32,6 +32,8 @@ pub const FLASH_S: f32 = 0.14;
 pub const SWING_S: f32 = 0.22;
 const SPIT_SPEED: f32 = 4.6;
 const SPIT_LIFE: f32 = 6;
+const BIG_SPIT_SPEED: f32 = 1.8;
+const BIG_SPIT_LIFE: f32 = SPIT_LIFE * SPIT_SPEED / BIG_SPIT_SPEED;
 const SPIT_R: f32 = 0.16;
 const BOLT_R: f32 = 0.14;
 /// A hero with no foe to strike looks again this soon.
@@ -48,7 +50,6 @@ const SPLASH_SHARE: f32 = 0.5;
 const BAT_WOBBLE: f32 = 0.7;
 const SPITTER_WINDUP: f32 = 3;
 const BOSS_BURST: usize = 16;
-const BURST_SPEED: f32 = SPIT_SPEED * 0.8;
 const BOSS_SUMMON_S: f32 = 9;
 const BOSS_SUMMONS: usize = 5;
 /// Cells from the lich its summons rise, and from the party a lich comes in.
@@ -783,11 +784,12 @@ pub const Run = struct {
             const turn = r.rng.unit();
             for (0..BOSS_BURST) |i| {
                 const h = (@as(f32, @floatFromInt(i)) + turn) / @as(f32, @floatFromInt(BOSS_BURST)) * mathx.TAU;
-                _ = r.spits.push(.{ .at = f.at, .vel = mathx.scale(mathx.fromHeading(h), BURST_SPEED), .dmg = row.spit_dmg, .life = SPIT_LIFE, .big = true });
+                _ = r.spits.push(.{ .at = f.at, .vel = mathx.scale(mathx.fromHeading(h), BIG_SPIT_SPEED), .dmg = row.spit_dmg, .life = BIG_SPIT_LIFE, .big = true });
             }
         }
-        r.emit(.{ .kind = .spit, .at = f.at, .foe = f.kind, .big = f.kind == .boss });
-        _ = r.spits.push(.{ .at = f.at, .vel = mathx.scale(mathx.norm(mathx.sub(mark, f.at)), SPIT_SPEED), .dmg = row.spit_dmg, .life = SPIT_LIFE, .big = f.kind == .boss });
+        const big = f.kind == .boss;
+        r.emit(.{ .kind = .spit, .at = f.at, .foe = f.kind, .big = big });
+        _ = r.spits.push(.{ .at = f.at, .vel = mathx.scale(mathx.norm(mathx.sub(mark, f.at)), if (big) BIG_SPIT_SPEED else SPIT_SPEED), .dmg = row.spit_dmg, .life = if (big) BIG_SPIT_LIFE else SPIT_LIFE, .big = big });
     }
 
     fn lobFrom(r: *Run, f: *Foe, l: foe.Lob, mark: V, d: f32) void {
