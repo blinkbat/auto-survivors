@@ -333,30 +333,39 @@ pub const Light = struct {
         rl.gl.rlDrawRenderBatchActive();
     }
 
-    /// The dark under its feet, then a shadow from each lamp that casts one.
-    pub fn drawShadows(self: *const Light, tex: rl.Texture2D, dest: rl.Rectangle, left: bool, centre: V, s: Shine) void {
-        const foot_row = self.gpu.art(tex).foot;
-        const scale = dest.height / @as(f32, @floatFromInt(tex.height));
-        const fx = dest.x + dest.width * 0.5;
-        const fy = dest.y + foot_row * scale;
-        const lit = s.lit();
-        if (lit <= 0) return;
+    /// The dark under each body's feet, then a shadow from each lamp that casts one. `bodies` have `tex`, `dest`,
+    /// `left`, `mid` and `shine`. Black laid over black lands the same in any order, so it is one flush a sprite.
+    pub fn drawShadows(self: *const Light, bodies: anytype) void {
         if (self.gpu.glow) |g| {
-            const a = CONTACT_A * @min(1, lit / 0.8);
-            glowAt(g, fx, fy, dest.width * CONTACT_W * 0.5, dest.width * CONTACT_H * 0.5, colourOf(@splat(0), a));
+            for (bodies) |b| {
+                const lit = b.shine.lit();
+                if (lit <= 0) continue;
+                const f = feet(self.gpu.art(b.tex), b.tex, b.dest);
+                glowAt(g, f.x, f.y, b.dest.width * CONTACT_W * 0.5, b.dest.width * CONTACT_H * 0.5, colourOf(@splat(0), CONTACT_A * @min(1, lit / 0.8)));
+            }
         }
         const sh = self.gpu.shadow orelse return;
-        var buf: [BODY_LIGHTS]Cast = undefined;
-        const cs = casts(s, centre, foot_row * scale, &buf);
-        if (cs.len == 0) return;
-        const size = [2]f32{ @floatFromInt(tex.width), @floatFromInt(tex.height) };
-        const foot = foot_row / size[1];
         rl.beginShaderMode(sh.shader);
         defer rl.endShaderMode();
-        rl.setShaderValue(sh.shader, sh.size, &size, .vec2);
-        rl.setShaderValue(sh.shader, sh.foot, &foot, .float);
-        for (cs) |c| silhouette(tex, fx, fy, c.lean, dest.width, foot, left, c.alpha);
-        rl.gl.rlDrawRenderBatchActive();
+        for (self.gpu.arts[0..self.gpu.art_n]) |a| {
+            var set = false;
+            for (bodies) |b| {
+                if (b.tex.id != a.id) continue;
+                const f = feet(a, b.tex, b.dest);
+                var buf: [BODY_LIGHTS]Cast = undefined;
+                const cs = casts(b.shine, b.mid, f.height, &buf);
+                if (cs.len == 0) continue;
+                const foot = a.foot / @as(f32, @floatFromInt(b.tex.height));
+                if (!set) {
+                    const size = [2]f32{ @floatFromInt(b.tex.width), @floatFromInt(b.tex.height) };
+                    rl.setShaderValue(sh.shader, sh.size, &size, .vec2);
+                    rl.setShaderValue(sh.shader, sh.foot, &foot, .float);
+                    set = true;
+                }
+                for (cs) |c| silhouette(b.tex, f.x, f.y, c.lean, b.dest.width, foot, b.left, c.alpha);
+            }
+            if (set) rl.gl.rlDrawRenderBatchActive();
+        }
     }
 
     /// Additive, centred on `x, y` px, `r` px out.
@@ -364,11 +373,16 @@ pub const Light = struct {
         const g = self.gpu.glow orelse return;
         glowAt(g, x, y, r, r, colourOf(c, a));
     }
-
 };
 
 /// `lean` is pixels from the feet to the tip.
 const Cast = struct { lean: [2]f32, alpha: f32 };
+
+/// Where a body drawn at `dest` stands, px, and how tall it is above that.
+fn feet(a: Art, tex: rl.Texture2D, dest: rl.Rectangle) struct { x: f32, y: f32, height: f32 } {
+    const height = a.foot * dest.height / @as(f32, @floatFromInt(tex.height));
+    return .{ .x = dest.x + dest.width * 0.5, .y = dest.y + height, .height = height };
+}
 
 fn casts(s: Shine, centre: V, height: f32, out: *[BODY_LIGHTS]Cast) []const Cast {
     const lit = s.lit();

@@ -38,6 +38,7 @@ const BUF: usize = 160;
 const CLOCK: usize = 16;
 const VEIL_FADE: i32 = 90;
 const ZOOMED_PLACE_PX: i32 = 84;
+const TILE = look.fade(look.RAISED, 0.96);
 const MENU_STEP: i32 = LINE + 14;
 const PIPS: usize = @intFromFloat(@round(1 / game.VOL_STEP));
 const NAV = input.NAV_CAPTION;
@@ -52,6 +53,10 @@ fn mid(g: *Game, s: [:0]const u8, y: i32, size: i32, col: rl.Color) void {
 
 fn fmt(buf: []u8, comptime f: []const u8, args: anytype) [:0]const u8 {
     return std.fmt.bufPrintZ(buf, f, args) catch "";
+}
+
+fn ruleText(buf: []u8, row: hero.ClassRow) [:0]const u8 {
+    return fmt(buf, "{s}: {s}", .{ row.rule, row.rule_desc });
 }
 
 fn veil(g: *Game) void {
@@ -175,7 +180,7 @@ fn cardsX(g: *Game, n: usize) i32 {
 }
 
 fn card(g: *Game, x: i32, y: i32, on: bool, dim: bool, icon: ?rl.Texture2D, title: [:0]const u8, desc: []const u8, foot: [:0]const u8, tint: rl.Color) void {
-    box(x, y, CARD_W, CARD_H, look.fade(look.RAISED, 0.96), if (on) look.BRIGHT else look.EDGE, if (on) 3 else 1);
+    box(x, y, CARD_W, CARD_H, TILE, if (on) look.BRIGHT else look.EDGE, if (on) 3 else 1);
     const a: f32 = if (dim) 0.4 else 1;
     if (icon) |t| look.stretch(t, .{ .x = @floatFromInt(x + @divTrunc(CARD_W - ICON_PX, 2)), .y = @floatFromInt(y + CARD_PAD - 4), .width = @floatFromInt(ICON_PX), .height = @floatFromInt(ICON_PX) }, look.fade(rl.Color.white, a));
     const ty = y + CARD_PAD + ICON_PX + 2;
@@ -193,7 +198,7 @@ fn drawLevel(g: *Game) void {
     const cy = top + 110 + CARD_H / 2;
     const promo = g.offer.n > 0 and g.offer.cards[0] == .branch;
     mid(g, fmt(&buf, "{s} - Level {d}{s}", .{ m.hero.name(), m.hero.level, if (promo) ": Promotion" else "" }), top + 4, font.TITLE, look.class(m.hero.class));
-    mid(g, fmt(&buf, "{s}: {s}", .{ row.rule, row.rule_desc }), top + 70, font.BODY, look.DIM);
+    mid(g, ruleText(&buf, row), top + 70, font.BODY, look.DIM);
     const x0 = cardsX(g, g.offer.n);
     for (g.offer.slice(), 0..) |c, i| {
         const f: [:0]const u8 = switch (c) {
@@ -231,7 +236,7 @@ fn drawPlace(g: *Game) void {
     const r = g.run;
     const low = g.from == .level;
     const cell = if (low) ZOOMED_PLACE_PX else PLACE_PX;
-    const side = 3 * cell + 2 * PLACE_GAP;
+    const side = formation.SIDE * cell + (formation.SIDE - 1) * PLACE_GAP;
     const x0 = @divTrunc(g.screen.x - side, 2);
     const y0 = if (low) veilLow(g) + 100 else blk: {
         veil(g);
@@ -250,7 +255,7 @@ fn drawPlace(g: *Game) void {
         const y = y0 + (o.y + 1) * (cell + PLACE_GAP);
         const here = s == g.cursor;
         const edge = if (here) (if (g.refused > 0) look.FOE else look.BRIGHT) else if (formation.inFront(s, r.facing)) look.GOLD else look.EDGE;
-        box(x, y, cell, cell, look.fade(look.RAISED, 0.96), edge, if (here) 3 else 1);
+        box(x, y, cell, cell, TILE, edge, if (here) 3 else 1);
         const cx = x + @divTrunc(cell, 2);
         if (r.memberAt(s)) |m| {
             g.face.mid(m.hero.name(), cx, y + @divTrunc(cell, 7), font.BODY, look.class(m.hero.class));
@@ -272,7 +277,7 @@ fn drawRecruit(g: *Game) void {
     for (g.choices, 0..) |c, i| {
         const row = hero.class(c);
         const ok = g.run.canRecruit(c);
-        const desc = fmt(&buf, "{s}: {s}", .{ row.rule, row.rule_desc });
+        const desc = ruleText(&buf, row);
         card(g, x0 + @as(i32, @intCast(i)) * (CARD_W + CARD_GAP), cy - CARD_H / 2, i == g.pick, !ok, g.sprites.heroes.get(c), row.name, desc, if (ok) "" else "No slot can take it", look.class(c));
     }
     mid(g, NAV ++ " choose   " ++ A ++ " take   " ++ B ++ " pass", cy + CARD_H / 2 + 30, font.BODY, look.DIM);

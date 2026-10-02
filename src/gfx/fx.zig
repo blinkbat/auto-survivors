@@ -34,6 +34,12 @@ const VENOM = rl.Color{ .r = 190, .g = 230, .b = 60, .a = 255 };
 const SOIL = rl.Color{ .r = 70, .g = 52, .b = 34, .a = 200 };
 const STOPPED = rl.Color{ .r = 170, .g = 210, .b = 255, .a = 255 };
 const MEND = rl.Color{ .r = 170, .g = 255, .b = 160, .a = 255 };
+pub const CHARM_RGB = Rgb{ 1.0, 0.45, 0.85 };
+
+/// A lobbed shell's fire, in flight and where it lands.
+pub fn shellHue(warned: bool) Rgb {
+    return if (warned) .{ 0.85, 0.35, 1.0 } else .{ 1.0, 0.55, 0.2 };
+}
 
 pub const Look = enum { drop, chunk, mist, spark, ember, smoke, glint };
 
@@ -299,7 +305,7 @@ pub const Fx = struct {
             },
             .charm => {
                 self.throw(.glint, e.at, 0.6, .{ 0, 0 }, 8, 0.8, ROUND, SONG);
-                self.burst(e.at, 0.1, 0.6, 0.3, .{ 1.0, 0.5, 0.85 }, 0.8);
+                self.burst(e.at, 0.1, 0.6, 0.3, CHARM_RGB, 0.8);
             },
             .raise => {
                 self.burst(e.at, 0.1, 0.8, 0.45, .{ 0.4, 1.0, 0.6 }, 0.7);
@@ -316,8 +322,7 @@ pub const Fx = struct {
                 self.throw(.mist, e.at, 0.3, .{ 0, 0 }, 2, 1, ROUND, BONE);
             },
             .boom => {
-                const hot: light.Rgb = if (e.big) .{ 0.85, 0.3, 1.0 } else .{ 1.0, 0.5, 0.15 };
-                self.burst(e.at, 0.2, e.amount, 0.35, hot, 1);
+                self.burst(e.at, 0.2, e.amount, 0.35, shellHue(e.big), 1);
                 self.throw(.ember, e.at, 0.2, .{ 0, 0 }, @intFromFloat(10 + 12 * e.amount), 2.5 * e.amount, ROUND, EMBER_HOT);
                 self.throw(.smoke, e.at, 0.2, .{ 0, 0 }, @intFromFloat(2 + 2 * e.amount), e.amount, ROUND, SMOKE);
                 self.stain(e.at, 0.45 * e.amount, .{ 1, 0 }, 1, SCORCH);

@@ -4,21 +4,20 @@ const mathx = @import("../core/mathx.zig");
 // THE 3x3. Slots hold their place on the ground; the facing is the way the party moves, so turning changes which
 // slots are the front row, never where anyone stands.
 
-pub const SLOTS: usize = 9;
+/// Slots along each side.
+pub const SIDE = 3;
+pub const SLOTS: usize = SIDE * SIDE;
 pub const Slot = u4;
-pub const CENTRE: Slot = 4;
+pub const CENTRE: Slot = SLOTS / 2;
 pub const Dir = mathx.Dir;
 
-/// Occupied slots, bit per slot.
-pub const Mask = std.bit_set.IntegerBitSet(SLOTS);
-
 pub fn offset(s: Slot) mathx.P {
-    return .{ .x = @as(i32, s % 3) - 1, .y = @as(i32, s / 3) - 1 };
+    return .{ .x = @as(i32, s % SIDE) - 1, .y = @as(i32, s / SIDE) - 1 };
 }
 
 pub fn at(p: mathx.P) ?Slot {
     if (p.x < -1 or p.x > 1 or p.y < -1 or p.y > 1) return null;
-    return @intCast((p.y + 1) * 3 + (p.x + 1));
+    return @intCast((p.y + 1) * SIDE + (p.x + 1));
 }
 
 pub fn frontCentre(f: Dir) Slot {
@@ -72,7 +71,7 @@ test "the front row is the three slots toward the facing, for all eight facings"
 }
 
 test "turning moves the front-centre round the ring, one slot per eighth" {
-    var seen = Mask.initEmpty();
+    var seen = std.bit_set.IntegerBitSet(SLOTS).initEmpty();
     for (mathx.ALL_DIRS) |f| seen.set(frontCentre(f));
     try std.testing.expectEqual(@as(usize, 8), seen.count());
     try std.testing.expect(!seen.isSet(CENTRE));

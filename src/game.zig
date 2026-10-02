@@ -63,11 +63,12 @@ const ZOOM_EASE: f32 = 6;
 const ZOOM_LIFT: f32 = 0.25;
 /// Seconds before a Time Stop ends that its frost starts to fade.
 const FROZEN_FADE: f32 = 0.4;
+/// Cells above its ground point a foe's frost, fire, charm and poison glow.
+const STATUS_LIFT: f32 = 0.25;
 /// Seconds a vine takes to grow in and to wither, and cells its lash lunges.
 const VINE_GROW_S: f32 = 0.35;
 const VINE_LUNGE: f32 = 0.3;
 const ROOTS = look.rgb(0x1e2e14);
-const WARN = look.rgb(0xe8423a);
 const POISON_RATE: f32 = 6;
 const NOTES: usize = 6;
 const NOTE_RGB = Rgb{ 1.0, 0.7, 0.95 };
@@ -80,6 +81,7 @@ const MEND_RATE: f32 = 9;
 const BIG_ORB: f32 = 1.5;
 
 const PARTY_LAMP = Rgb{ 0.85, 0.80, 0.72 };
+const PARTY_LAMP_INDEX: usize = 0;
 const PARTY_REACH: f32 = 11;
 const PARTY_Z: f32 = 1.6;
 const FLAME = Rgb{ 1.30, 0.80, 0.40 };
@@ -173,7 +175,9 @@ pub const Game = struct {
 
 pub fn boot(alloc: std.mem.Allocator, seed: u64) !*Game {
     const g = try alloc.create(Game);
+    errdefer alloc.destroy(g);
     g.run = try run.Run.create(alloc, seed);
+    errdefer alloc.destroy(g.run);
     g.light = try light.Light.create(alloc);
     g.fx = .{};
     g.fx.clear();
@@ -525,11 +529,11 @@ fn inView(v: View, q: V, pad: f32) bool {
     return q[0] > v.lo[0] - pad and q[0] < v.hi[0] + pad and q[1] > v.lo[1] - pad and q[1] < v.hi[1] + pad;
 }
 
-/// Index 0 is the party's own lamp.
 fn lightUp(g: *Game, v: View, fires: []const Brazier) void {
     const l = g.light;
     const r = g.run;
     l.clear();
+    std.debug.assert(l.n == PARTY_LAMP_INDEX);
     l.add(.{ .at = r.party, .z = PARTY_Z, .colour = PARTY_LAMP, .reach = PARTY_REACH });
     for (fires) |b| l.add(.{ .at = b.at, .z = BRAZIER_Z, .colour = flame(g.t, b.seed).colour, .reach = BRAZIER_REACH, .casts = true });
     if (r.boss()) |b| l.add(.{ .at = b.at, .z = BOSS_Z, .colour = BOSS_LAMP, .reach = BOSS_REACH });
@@ -588,7 +592,7 @@ fn heroPose(g: *const Game, m: run.Member, moving: bool) Pose {
         p.sx = 1 + LUNGE_STRETCH * s;
         p.sy = 1 - LUNGE_STRETCH * 0.5 * s;
         p.left = aim[0] < 0;
-    } else if (m.hero.class == .archer or m.hero.class == .pyromancer) {
+    } else if (m.stats.shot_speed > 0) {
         const since = m.stats.cd - m.cd;
         if (m.cd > 0 and since < RECOIL_S) {
             p.shift = mathx.scale(aim, -RECOIL * (1 - since / RECOIL_S));
@@ -675,8 +679,8 @@ fn drawWarnings(g: *Game, v: View) void {
         const k = std.math.clamp(s.t / s.fuse, 0, 1);
         const rad = s.radius * CELL;
         const pulse = 0.75 + 0.25 * @sin(g.t * 14);
-        rl.drawCircleV(p, rad * k, look.fade(WARN, 0.22 + 0.2 * k));
-        rl.drawRing(p, rad - 3, rad, 0, 360, 48, look.fade(WARN, 0.85 * pulse));
+        rl.drawCircleV(p, rad * k, look.fade(look.HARM, 0.22 + 0.2 * k));
+        rl.drawRing(p, rad - 3, rad, 0, 360, 48, look.fade(look.HARM, 0.85 * pulse));
     }
 }
 
@@ -690,7 +694,7 @@ fn drawShells(g: *Game, v: View) void {
         const ground = mathx.lerpV(s.from, s.at, k);
         const rise = run.LOB_ARC * mathx.len(mathx.sub(s.at, s.from)) * 4 * k * (1 - k);
         const p = g.px(.{ ground[0], ground[1] - rise });
-        const hot: Rgb = if (s.warned) .{ 0.85, 0.35, 1.0 } else .{ 1.0, 0.55, 0.2 };
+        const hot = fx.shellHue(s.warned);
         g.light.glow(p[0], p[1], if (s.warned) 30 else 16, hot, 0.85);
         g.light.glow(p[0], p[1], if (s.warned) 10 else 6, .{ 1, 0.95, 0.85 }, 1);
         if (!s.warned) {
@@ -716,7 +720,7 @@ fn gatherFigs(g: *Game, v: View, fires: []const Brazier) []Fig {
     const moving = mathx.len2(r.vel) > 0.01;
     for (r.members.constSlice()) |m| {
         const tex = g.sprites.heroes.get(m.hero.class) orelse continue;
-        g.figs[n] = figAt(g, tex, m.at, heroPose(g, m, moving), m.flash / run.FLASH_S, 0);
+        g.figs[n] = figAt(g, tex, m.at, heroPose(g, m, moving), m.flash / run.FLASH_S, PARTY_LAMP_INDEX);
         n += 1;
     }
     for (r.foes.constSlice()) |f| {
@@ -823,27 +827,16 @@ fn drawFires(g: *Game, v: View, fires: []const Brazier) void {
         }
     }
     for (r.foes.constSlice()) |f| {
-        if (f.frozen <= 0 or !inView(v, f.at, 1)) continue;
+        if (!inView(v, f.at, 1)) continue;
         const p = g.px(f.at);
-        const a = @min(1, f.frozen / FROZEN_FADE);
-        g.light.glow(p[0], p[1] - CELL * 0.25, CELL * 0.55, .{ 0.45, 0.65, 1.0 }, 0.55 * a);
-    }
-    for (r.foes.constSlice()) |f| {
-        if (f.burn.t <= 0 or !inView(v, f.at, 1)) continue;
-        const p = g.px(f.at);
-        const k = light.flicker(g.t * 2, f.uid);
-        g.light.glow(p[0], p[1] - CELL * 0.25, CELL * 0.5 * k, .{ 1.0, 0.45, 0.12 }, 0.45);
-    }
-    for (r.foes.constSlice()) |f| {
-        if (f.charm <= 0 or !inView(v, f.at, 1)) continue;
-        const p = g.px(f.at);
-        g.light.glow(p[0], p[1] - CELL * 0.25, CELL * 0.55, .{ 1.0, 0.45, 0.85 }, 0.45);
-        drawNote(p[0] + 10, p[1] - CELL * 0.8 + @sin(g.t * 5 + @as(f32, @floatFromInt(f.uid))) * 3, light.colourOf(NOTE_RGB, 1));
-    }
-    for (r.foes.constSlice()) |f| {
-        if (f.poison.t <= 0 or !inView(v, f.at, 1)) continue;
-        const p = g.px(f.at);
-        g.light.glow(p[0], p[1] - CELL * 0.25, CELL * 0.45, .{ 0.6, 0.9, 0.15 }, 0.3);
+        const y = p[1] - CELL * STATUS_LIFT;
+        if (f.frozen > 0) g.light.glow(p[0], y, CELL * 0.55, .{ 0.45, 0.65, 1.0 }, 0.55 * @min(1, f.frozen / FROZEN_FADE));
+        if (f.burn.t > 0) g.light.glow(p[0], y, CELL * 0.5 * light.flicker(g.t * 2, f.uid), .{ 1.0, 0.45, 0.12 }, 0.45);
+        if (f.charm > 0) {
+            g.light.glow(p[0], y, CELL * 0.55, fx.CHARM_RGB, 0.45);
+            drawNote(p[0] + 10, p[1] - CELL * 0.8 + @sin(g.t * 5 + @as(f32, @floatFromInt(f.uid))) * 3, light.colourOf(NOTE_RGB, 1));
+        }
+        if (f.poison.t > 0) g.light.glow(p[0], y, CELL * 0.45, .{ 0.6, 0.9, 0.15 }, 0.3);
     }
     if (r.boss()) |b| {
         const p = g.px(b.at);
@@ -947,7 +940,7 @@ pub fn drawWorld(g: *Game) void {
     drawRoots(g, v);
     drawWarnings(g, v);
     g.fx.drawGround(o, CELL);
-    for (figs) |f| g.light.drawShadows(f.tex, f.dest, f.left, f.mid, f.shine);
+    g.light.drawShadows(figs);
     g.light.drawMap(o, CELL);
     drawOrbs(g, v);
     for (figs) |f| g.light.drawBody(f.tex, f.dest, f.left, f.mid, f.shine, f.flash);

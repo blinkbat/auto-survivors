@@ -30,6 +30,8 @@ pub const Row = struct {
     mass: f32 = 1,
     /// Share of the run's hp growth it takes.
     scales: f32 = 1,
+    /// Hunter's Mark's quarry.
+    big: bool = false,
 };
 
 pub fn row(k: Kind) Row {
@@ -43,8 +45,8 @@ pub fn row(k: Kind) Row {
         .hound => .{ .name = "hound", .hp = 12, .speed = 3.9, .dmg = 9, .radius = 0.32, .xp = 1, .turn = 2.4 },
         .imp => .{ .name = "imp", .hp = 16, .speed = 1.6, .dmg = 8, .radius = 0.3, .xp = 2, .keep = 5, .lob = .{ .cd = 3.2, .range = 8, .fuse = 0.9, .radius = 0.8, .dmg = 12, .warned = false } },
         .warlock => .{ .name = "warlock", .hp = 34, .speed = 1.1, .dmg = 10, .radius = 0.38, .xp = 4, .keep = 7, .lob = .{ .cd = 6, .range = 10, .fuse = 1.8, .radius = 2.1, .dmg = 34, .warned = true } },
-        .brute => .{ .name = "brute", .hp = 240, .speed = 1.2, .dmg = 20, .radius = 0.62, .xp = 12, .mass = 4, .scales = 0.4 },
-        .boss => .{ .name = "lich", .hp = 14000, .speed = 1.1, .dmg = 75, .radius = 1.05, .xp = 0, .keep = 3.5, .spit_cd = 4.2, .spit_dmg = 34, .mass = 20, .scales = 0 },
+        .brute => .{ .name = "brute", .hp = 240, .speed = 1.2, .dmg = 20, .radius = 0.62, .xp = 12, .mass = 4, .scales = 0.4, .big = true },
+        .boss => .{ .name = "lich", .hp = 14000, .speed = 1.1, .dmg = 75, .radius = 1.05, .xp = 0, .keep = 3.5, .spit_cd = 4.2, .spit_dmg = 34, .mass = 20, .scales = 0, .big = true },
     };
 }
 

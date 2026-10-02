@@ -27,7 +27,7 @@ pub fn colour(k: Kind) rl.Color {
     return switch (k) {
         .hit => rl.Color.white,
         .crit => look.BRIGHT,
-        .party => look.rgb(0xe8423a),
+        .party => look.HARM,
         .burn => look.rgb(0xff9a3a),
         .poison => look.rgb(0xc8e040),
         .heal => look.rgb(0xb8f0b0),

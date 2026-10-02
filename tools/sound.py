@@ -141,7 +141,6 @@ def sfx():
     n = secs(0.5)
     out["raise"] = norm(lowpass(noise(n, R, 2500), 900, R) * env(n, R, 0.1, 0, 1, 0.3) + 0.6 * pulse(sweep(70, 160, n), n, R, 0.25) * env(n, R, 0.05, 0, 1, 0.3), 0.5)
     n = secs(0.25)
-    clack = sum(np.roll(highpass(noise(secs(0.03), R, 9000), 2000, R), 0) * 0 for _ in range(1))
     rattle = np.zeros(n)
     for i in range(5):
         k = int(i * 0.045 * R)

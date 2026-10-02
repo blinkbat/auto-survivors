@@ -25,12 +25,12 @@ pub const Up = enum {
     blade,
     tower,
     cleave,
+    echo,
     fortify,
     riposte,
     longsword,
     second_wind,
     executioner,
-    echo,
     fletching,
     quick_draw,
     split_arrow,
@@ -260,50 +260,50 @@ pub const REVIVED_HP: f32 = 0.5;
 
 pub fn up(u: Up) UpRow {
     return switch (u) {
-        .blade => .{ .class = .knight, .name = "Whetted Blade", .desc = pct("+{d:.0}% damage", .{BLADE * 100}), .max = 5 , .tag = .damage },
-        .tower => .{ .class = .knight, .name = "Tower Shield", .desc = pct("+{d} max hp", .{TOWER_HP}), .max = 5 , .tag = .survival },
-        .cleave => .{ .class = .knight, .name = "Cleave", .desc = pct("Swings sweep {d:.0} degrees wider", .{CLEAVE_UP * 2 * 180 / std.math.pi}), .max = 4 , .tag = .area },
-        .echo => .{ .class = .knight, .name = "Echo", .desc = pct("Each swing strikes once more, at {d:.0}% of the strike before", .{ECHO_FALLOFF * 100}), .max = 3 , .tag = .damage },
-        .fortify => .{ .class = .knight, .name = "Fortify", .desc = pct("Takes {d:.0}% less damage", .{(1 - FORTIFY) * 100}), .max = 4 , .tag = .survival },
-        .fletching => .{ .class = .archer, .name = "Fletching", .desc = pct("+{d:.0}% damage", .{FLETCH * 100}), .max = 5 , .tag = .damage },
-        .quick_draw => .{ .class = .archer, .name = "Quick Draw", .desc = pct("Fires {d:.0}% faster", .{(1 - QUICK) * 100}), .max = 4 , .tag = .rate },
-        .split_arrow => .{ .class = .archer, .name = "Split Arrow", .desc = "One more arrow a volley", .max = 3 , .tag = .area },
-        .longbow => .{ .class = .archer, .name = "Longbow", .desc = pct("+{d} range, arrows pierce one more", .{LONGBOW}), .max = 3 , .tag = .reach },
-        .mending => .{ .class = .cleric, .name = "Mending", .desc = pct("+{d:.0}% healing", .{MENDING * 100}), .max = 5 , .tag = .healing },
-        .vigor => .{ .class = .cleric, .name = "Vigor", .desc = pct("+{d} max hp", .{VIGOR_HP}), .max = 5 , .tag = .survival },
-        .smite => .{ .class = .cleric, .name = "Smite", .desc = pct("Each pulse burns foes within {d} cells for {d}", .{ SMITE_REACH, SMITE }), .max = 4 , .tag = .damage },
-        .radiance => .{ .class = .cleric, .name = "Radiance", .desc = pct("Pulses {d:.0}% faster", .{(1 - RADIANCE) * 100}), .max = 4 , .tag = .rate },
-        .kindling => .{ .class = .pyromancer, .name = "Kindling", .desc = pct("+{d:.0}% firebolt damage", .{KINDLING * 100}), .max = 5 , .tag = .damage },
-        .ember => .{ .class = .pyromancer, .name = "Ember", .desc = pct("Casts {d:.0}% faster", .{(1 - EMBER) * 100}), .max = 4 , .tag = .rate },
-        .riposte => .{ .class = .knight, .name = "Riposte", .desc = pct("Strikes back for {d} at whatever bites it", .{RIPOSTE}), .max = 4 , .tag = .damage },
-        .longsword => .{ .class = .knight, .name = "Longsword", .desc = pct("Reaches {d} further", .{LONGSWORD}), .max = 3 , .tag = .reach },
-        .second_wind => .{ .class = .knight, .name = "Second Wind", .desc = pct("Regains {d} hp a second", .{SECOND_WIND}), .max = 3 , .tag = .healing },
-        .keen_eye => .{ .class = .archer, .name = "Keen Eye", .desc = pct("+{d:.0}% critical hit chance", .{KEEN * 100}), .max = 4 , .tag = .crit },
-        .executioner => .{ .class = .knight, .name = "Executioner", .desc = pct("+{d:.0}% critical hit damage", .{EXECUTIONER * 100}), .max = 4 , .tag = .crit },
-        .hunters_mark => .{ .class = .archer, .name = "Hunter's Mark", .desc = pct("+{d:.0}% damage to brutes and the lich", .{HUNTERS_MARK * 100}), .max = 3 , .tag = .damage },
-        .wide_volley => .{ .class = .archer, .name = "Wide Volley", .desc = "The half of the field it fires into widens", .max = 2 , .tag = .reach },
-        .aegis => .{ .class = .cleric, .name = "Aegis", .desc = pct("Heroes in its Sanctuary take {d:.0}% less damage", .{AEGIS * 100}), .max = 3 , .tag = .survival },
-        .lifeline => .{ .class = .cleric, .name = "Lifeline", .desc = pct("Each pulse also heals the most wounded hero anywhere, for {d:.0}% of its heal", .{LIFELINE * 100}), .max = 1 , .tag = .healing },
-        .consecrate => .{ .class = .cleric, .name = "Consecrate", .desc = pct("Smite reaches {d} further", .{CONSECRATE}), .max = 3 , .tag = .reach },
-        .fireball => .{ .class = .pyromancer, .name = "Fireball", .desc = pct("Firebolts burst {d} wider", .{FIREBALL}), .max = 3 , .tag = .area },
-        .twin_flame => .{ .class = .pyromancer, .name = "Twin Flame", .desc = "One more firebolt a cast", .max = 2 , .tag = .area },
-        .immolate => .{ .class = .pyromancer, .name = "Immolate", .desc = pct("Firebolts set foes burning, {d} a second for {d}s", .{ IMMOLATE_DPS, BURN_S }), .max = 4 , .tag = .status },
-        .quickening => .{ .class = .mystic, .name = "Quickening", .desc = pct("Stops time {d:.0}% more often", .{(1 - QUICKENING) * 100}), .max = 4 , .tag = .rate },
-        .stillness => .{ .class = .mystic, .name = "Stillness", .desc = pct("Time stays stopped {d}s longer", .{STILLNESS}), .max = 4 , .tag = .control },
-        .expanse => .{ .class = .mystic, .name = "Expanse", .desc = pct("Time Stop reaches {d} further", .{EXPANSE}), .max = 4 , .tag = .reach },
-        .shatter => .{ .class = .mystic, .name = "Shatter", .desc = pct("The party deals {d:.0}% more damage to stopped foes", .{SHATTER * 100}), .max = 4 , .tag = .damage },
-        .long_tendrils => .{ .class = .druid, .name = "Long Tendrils", .desc = pct("Vines lash {d} further", .{LONG_TENDRILS}), .max = 4 , .tag = .reach },
-        .thicket => .{ .class = .druid, .name = "Thicket", .desc = "One more vine at a time", .max = 3 , .tag = .count },
-        .verdant => .{ .class = .druid, .name = "Verdant", .desc = pct("+{d:.0}% to all healing the party receives", .{VERDANT * 100}), .max = 4 , .tag = .healing },
-        .venom => .{ .class = .druid, .name = "Venom", .desc = pct("Lashes poison foes, {d} a second for {d}s", .{ VENOM_DPS, POISON_S }), .max = 4 , .tag = .status },
-        .enchanting_air => .{ .class = .bard, .name = "Enchanting Air", .desc = pct("Foes in its music are turned {d:.0}% more often", .{ENCHANTING / CHARM_RATE * 100}), .max = 4 , .tag = .control },
-        .wide_song => .{ .class = .bard, .name = "Wide Song", .desc = pct("Its music spreads {d} further", .{WIDE_SONG}), .max = 4 , .tag = .reach },
-        .crescendo => .{ .class = .bard, .name = "Crescendo", .desc = pct("+{d:.0}% damage to cardinally adjacent heroes", .{CRESCENDO * 100}), .max = 4 , .tag = .damage },
-        .tempo => .{ .class = .bard, .name = "Tempo", .desc = pct("Plays {d:.0}% more often", .{(1 - TEMPO) * 100}), .max = 4 , .tag = .rate },
-        .legion => .{ .class = .necromancer, .name = "Legion", .desc = "One more skeleton at a time", .max = 3 , .tag = .count },
-        .bone_armor => .{ .class = .necromancer, .name = "Bone Armor", .desc = pct("+{d:.0}% skeleton hp", .{BONE_ARMOR * 100}), .max = 4 , .tag = .survival },
-        .grave_strength => .{ .class = .necromancer, .name = "Grave Strength", .desc = pct("+{d:.0}% skeleton damage", .{GRAVE_STRENGTH * 100}), .max = 4 , .tag = .damage },
-        .deathly_precision => .{ .class = .necromancer, .name = "Deathly Precision", .desc = pct("+{d:.0}% skeleton critical chance", .{DEATHLY * 100}), .max = 4 , .tag = .crit },
+        .blade => .{ .class = .knight, .name = "Whetted Blade", .desc = pct("+{d:.0}% damage", .{BLADE * 100}), .max = 5, .tag = .damage },
+        .tower => .{ .class = .knight, .name = "Tower Shield", .desc = pct("+{d} max hp", .{TOWER_HP}), .max = 5, .tag = .survival },
+        .cleave => .{ .class = .knight, .name = "Cleave", .desc = pct("Swings sweep {d:.0} degrees wider", .{CLEAVE_UP * 2 * 180 / std.math.pi}), .max = 4, .tag = .area },
+        .echo => .{ .class = .knight, .name = "Echo", .desc = pct("Each swing strikes once more, at {d:.0}% of the strike before", .{ECHO_FALLOFF * 100}), .max = 3, .tag = .damage },
+        .fortify => .{ .class = .knight, .name = "Fortify", .desc = pct("Takes {d:.0}% less damage", .{(1 - FORTIFY) * 100}), .max = 4, .tag = .survival },
+        .fletching => .{ .class = .archer, .name = "Fletching", .desc = pct("+{d:.0}% damage", .{FLETCH * 100}), .max = 5, .tag = .damage },
+        .quick_draw => .{ .class = .archer, .name = "Quick Draw", .desc = pct("Fires {d:.0}% faster", .{(1 - QUICK) * 100}), .max = 4, .tag = .rate },
+        .split_arrow => .{ .class = .archer, .name = "Split Arrow", .desc = "One more arrow a volley", .max = 3, .tag = .area },
+        .longbow => .{ .class = .archer, .name = "Longbow", .desc = pct("+{d} range, arrows pierce one more", .{LONGBOW}), .max = 3, .tag = .reach },
+        .mending => .{ .class = .cleric, .name = "Mending", .desc = pct("+{d:.0}% healing", .{MENDING * 100}), .max = 5, .tag = .healing },
+        .vigor => .{ .class = .cleric, .name = "Vigor", .desc = pct("+{d} max hp", .{VIGOR_HP}), .max = 5, .tag = .survival },
+        .smite => .{ .class = .cleric, .name = "Smite", .desc = pct("Each pulse burns foes within {d} cells for {d}", .{ SMITE_REACH, SMITE }), .max = 4, .tag = .damage },
+        .radiance => .{ .class = .cleric, .name = "Radiance", .desc = pct("Pulses {d:.0}% faster", .{(1 - RADIANCE) * 100}), .max = 4, .tag = .rate },
+        .kindling => .{ .class = .pyromancer, .name = "Kindling", .desc = pct("+{d:.0}% firebolt damage", .{KINDLING * 100}), .max = 5, .tag = .damage },
+        .ember => .{ .class = .pyromancer, .name = "Ember", .desc = pct("Casts {d:.0}% faster", .{(1 - EMBER) * 100}), .max = 4, .tag = .rate },
+        .riposte => .{ .class = .knight, .name = "Riposte", .desc = pct("Strikes back for {d} at whatever bites it", .{RIPOSTE}), .max = 4, .tag = .damage },
+        .longsword => .{ .class = .knight, .name = "Longsword", .desc = pct("Reaches {d} further", .{LONGSWORD}), .max = 3, .tag = .reach },
+        .second_wind => .{ .class = .knight, .name = "Second Wind", .desc = pct("Regains {d} hp a second", .{SECOND_WIND}), .max = 3, .tag = .healing },
+        .keen_eye => .{ .class = .archer, .name = "Keen Eye", .desc = pct("+{d:.0}% critical hit chance", .{KEEN * 100}), .max = 4, .tag = .crit },
+        .executioner => .{ .class = .knight, .name = "Executioner", .desc = pct("+{d:.0}% critical hit damage", .{EXECUTIONER * 100}), .max = 4, .tag = .crit },
+        .hunters_mark => .{ .class = .archer, .name = "Hunter's Mark", .desc = pct("+{d:.0}% damage to brutes and the lich", .{HUNTERS_MARK * 100}), .max = 3, .tag = .damage },
+        .wide_volley => .{ .class = .archer, .name = "Wide Volley", .desc = "The half of the field it fires into widens", .max = 2, .tag = .reach },
+        .aegis => .{ .class = .cleric, .name = "Aegis", .desc = pct("Heroes in its Sanctuary take {d:.0}% less damage", .{AEGIS * 100}), .max = 3, .tag = .survival },
+        .lifeline => .{ .class = .cleric, .name = "Lifeline", .desc = pct("Each pulse also heals the most wounded hero anywhere, for {d:.0}% of its heal", .{LIFELINE * 100}), .max = 1, .tag = .healing },
+        .consecrate => .{ .class = .cleric, .name = "Consecrate", .desc = pct("Smite reaches {d} further", .{CONSECRATE}), .max = 3, .tag = .reach },
+        .fireball => .{ .class = .pyromancer, .name = "Fireball", .desc = pct("Firebolts burst {d} wider", .{FIREBALL}), .max = 3, .tag = .area },
+        .twin_flame => .{ .class = .pyromancer, .name = "Twin Flame", .desc = "One more firebolt a cast", .max = 2, .tag = .area },
+        .immolate => .{ .class = .pyromancer, .name = "Immolate", .desc = pct("Firebolts set foes burning, {d} a second for {d}s", .{ IMMOLATE_DPS, BURN_S }), .max = 4, .tag = .status },
+        .quickening => .{ .class = .mystic, .name = "Quickening", .desc = pct("Stops time {d:.0}% more often", .{(1 - QUICKENING) * 100}), .max = 4, .tag = .rate },
+        .stillness => .{ .class = .mystic, .name = "Stillness", .desc = pct("Time stays stopped {d}s longer", .{STILLNESS}), .max = 4, .tag = .control },
+        .expanse => .{ .class = .mystic, .name = "Expanse", .desc = pct("Time Stop reaches {d} further", .{EXPANSE}), .max = 4, .tag = .reach },
+        .shatter => .{ .class = .mystic, .name = "Shatter", .desc = pct("The party deals {d:.0}% more damage to stopped foes", .{SHATTER * 100}), .max = 4, .tag = .damage },
+        .long_tendrils => .{ .class = .druid, .name = "Long Tendrils", .desc = pct("Vines lash {d} further", .{LONG_TENDRILS}), .max = 4, .tag = .reach },
+        .thicket => .{ .class = .druid, .name = "Thicket", .desc = "One more vine at a time", .max = 3, .tag = .count },
+        .verdant => .{ .class = .druid, .name = "Verdant", .desc = pct("+{d:.0}% to all healing the party receives", .{VERDANT * 100}), .max = 4, .tag = .healing },
+        .venom => .{ .class = .druid, .name = "Venom", .desc = pct("Lashes poison foes, {d} a second for {d}s", .{ VENOM_DPS, POISON_S }), .max = 4, .tag = .status },
+        .enchanting_air => .{ .class = .bard, .name = "Enchanting Air", .desc = pct("Foes in its music are turned {d:.0}% more often", .{ENCHANTING / CHARM_RATE * 100}), .max = 4, .tag = .control },
+        .wide_song => .{ .class = .bard, .name = "Wide Song", .desc = pct("Its music spreads {d} further", .{WIDE_SONG}), .max = 4, .tag = .reach },
+        .crescendo => .{ .class = .bard, .name = "Crescendo", .desc = pct("+{d:.0}% damage to cardinally adjacent heroes", .{CRESCENDO * 100}), .max = 4, .tag = .damage },
+        .tempo => .{ .class = .bard, .name = "Tempo", .desc = pct("Plays {d:.0}% more often", .{(1 - TEMPO) * 100}), .max = 4, .tag = .rate },
+        .legion => .{ .class = .necromancer, .name = "Legion", .desc = "One more skeleton at a time", .max = 3, .tag = .count },
+        .bone_armor => .{ .class = .necromancer, .name = "Bone Armor", .desc = pct("+{d:.0}% skeleton hp", .{BONE_ARMOR * 100}), .max = 4, .tag = .survival },
+        .grave_strength => .{ .class = .necromancer, .name = "Grave Strength", .desc = pct("+{d:.0}% skeleton damage", .{GRAVE_STRENGTH * 100}), .max = 4, .tag = .damage },
+        .deathly_precision => .{ .class = .necromancer, .name = "Deathly Precision", .desc = pct("+{d:.0}% skeleton critical chance", .{DEATHLY * 100}), .max = 4, .tag = .crit },
         .undying => .{ .class = .necromancer, .name = "Undying", .desc = pct("+{d:.0}% chance a fallen hero rises", .{UNDYING * 100}), .max = 4, .tag = .survival },
     };
 }
@@ -574,17 +574,14 @@ pub fn xpFor(level: u8) f32 {
     return 8 + 6 * l + 0.6 * l * l;
 }
 
+const UPS = blk: {
+    var a = std.EnumArray(Class, []const Up).initFill(&.{});
+    for (std.enums.values(Up)) |u| a.set(up(u).class, a.get(up(u).class) ++ [_]Up{u});
+    break :blk a;
+};
+
 pub fn ups(c: Class) []const Up {
-    return switch (c) {
-        .knight => &.{ .blade, .tower, .cleave, .echo, .fortify, .riposte, .longsword, .second_wind, .executioner },
-        .archer => &.{ .fletching, .quick_draw, .split_arrow, .longbow, .keen_eye, .hunters_mark, .wide_volley },
-        .cleric => &.{ .mending, .vigor, .smite, .radiance, .aegis, .lifeline, .consecrate },
-        .pyromancer => &.{ .kindling, .ember, .fireball, .twin_flame, .immolate },
-        .mystic => &.{ .quickening, .stillness, .expanse, .shatter },
-        .druid => &.{ .long_tendrils, .thicket, .verdant, .venom },
-        .bard => &.{ .enchanting_air, .wide_song, .crescendo, .tempo },
-        .necromancer => &.{ .legion, .bone_armor, .grave_strength, .deathly_precision, .undying },
-    };
+    return UPS.get(c);
 }
 
 pub const Card = union(enum) {
@@ -613,7 +610,11 @@ pub const Card = union(enum) {
 };
 
 pub const OFFER_MAX: usize = 4;
-const POOL_MAX: usize = 9;
+const POOL_MAX: usize = blk: {
+    var n: usize = 0;
+    for (CLASSES) |c| n = @max(n, ups(c).len);
+    break :blk n;
+};
 pub const Offer = struct {
     cards: [OFFER_MAX]Card = undefined,
     n: usize = 0,
@@ -653,12 +654,11 @@ pub fn offer(h: Hero, rng: *mathx.Rng) Offer {
     return o;
 }
 
-test "every upgrade belongs to the class whose pool names it" {
+test "every class has at least four upgrades, and its branches are its own" {
     var owned: usize = 0;
     for (CLASSES) |c| {
-        try std.testing.expect(ups(c).len >= 4 and ups(c).len <= POOL_MAX);
+        try std.testing.expect(ups(c).len >= 4);
         owned += ups(c).len;
-        for (ups(c)) |u| try std.testing.expectEqual(c, up(u).class);
         if (class(c).branches) |bs| {
             for (bs) |b| try std.testing.expectEqual(c, branch(b).class);
         }

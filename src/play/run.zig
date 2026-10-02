@@ -24,9 +24,12 @@ pub const BITE_CD: f32 = 0.7;
 pub const BLOCK_R: f32 = SPACING * 1.5 + 0.35;
 const MAGNET_R: f32 = 2.6;
 const ORB_SPEED: f32 = 10;
+const ORB_ACCEL: f32 = ORB_SPEED * 3;
 const COLLECT_R: f32 = 0.3;
 const BANNER_R: f32 = 1.7;
 pub const SPAWN_R: f32 = 17;
+/// Cells past `SPAWN_R` the horde may come in from.
+const SPAWN_DEPTH: f32 = 2;
 pub const DESPAWN_R: f32 = 27;
 pub const FLASH_S: f32 = 0.14;
 pub const SWING_S: f32 = 0.22;
@@ -48,6 +51,14 @@ const ECHO_GAP: f32 = 0.14;
 const POINT_BLANK: f32 = 0.3;
 const SPLASH_SHARE: f32 = 0.5;
 const BAT_WOBBLE: f32 = 0.7;
+const BAT_WOBBLE_RATE: f32 = 5;
+/// A foe that keeps its distance backs off inside `keep - KEEP_IN` and circles out to `keep + KEEP_OUT`, at these
+/// shares of its speed; it spits from within `keep + SPIT_REACH`.
+const KEEP_IN: f32 = 0.5;
+const KEEP_OUT: f32 = 1;
+const BACK_OFF: f32 = 0.6;
+const CIRCLE: f32 = 0.4;
+const SPIT_REACH: f32 = 4;
 const SPITTER_WINDUP: f32 = 3;
 const BOSS_BURST: usize = 16;
 const BOSS_SUMMON_S: f32 = 9;
@@ -95,8 +106,7 @@ pub const LASH_S: f32 = 0.18;
 const MAX_EVENTS: usize = 768;
 const MAX_LEVELS: usize = 64;
 
-/// The slots a run's party starts in: north, centre, south.
-pub const START_SLOTS = [_]Slot{ 1, 4, 7 };
+pub const START_SLOTS = [_]Slot{ formation.frontCentre(.n), formation.CENTRE, formation.frontCentre(.s) };
 
 pub const Member = struct {
     id: u32,
@@ -168,6 +178,7 @@ pub const Foe = struct {
     final: bool = true,
     /// Seconds a Time Stop still holds it, and the damage multiple the party deals it meanwhile.
     frozen: f32 = 0,
+    shatter: f32 = 1,
     /// Seconds it fights for the party.
     charm: f32 = 0,
     /// Heading it runs on, for a foe that turns slowly.
@@ -175,7 +186,6 @@ pub const Foe = struct {
     /// Seconds it holds its heading after a bite, charging on through.
     commit: f32 = 0,
     lob: f32 = 0,
-    shatter: f32 = 1,
 
     /// Alive and not charmed onto the party's side.
     pub fn hostile(f: Foe) bool {
@@ -185,6 +195,26 @@ pub const Foe = struct {
     /// Cells from `p` to its edge.
     fn gap(f: Foe, p: V) f32 {
         return mathx.len(mathx.sub(f.at, p)) - foe.row(f.kind).radius;
+    }
+
+    const Contact = struct { n: V, rim: V };
+
+    /// When it overlaps a body of radius `r` at `at`: the way out from `at`, and where it stands just touching.
+    fn touching(f: Foe, at: V, r: f32) ?Contact {
+        const reach = foe.row(f.kind).radius + r;
+        const off = mathx.sub(f.at, at);
+        const d2 = mathx.len2(off);
+        if (d2 >= reach * reach) return null;
+        const n = if (d2 < 1e-8) mathx.fromHeading(@floatFromInt(f.uid)) else mathx.scale(off, 1 / @sqrt(d2));
+        return .{ .n = n, .rim = mathx.add(at, mathx.scale(n, reach)) };
+    }
+
+    /// Bites along `dir` if its bite is ready.
+    fn lunge(f: *Foe, dir: V) bool {
+        if (f.bite > 0) return false;
+        f.bite = BITE_CD;
+        f.jab = dir;
+        return true;
     }
 };
 
@@ -196,7 +226,12 @@ pub const Dot = struct {
     show: f32 = 0,
 
     fn apply(d: *Dot, dps: f32, s: f32) void {
-        d.dps = if (d.t > 0) @max(d.dps, dps) else dps;
+        if (d.t > 0) {
+            d.dps = @max(d.dps, dps);
+        } else {
+            d.dps = dps;
+            d.show = DOT_SHOW_S;
+        }
         d.t = s;
     }
 };
@@ -280,7 +315,7 @@ pub const Shell = struct {
 
 pub const Spit = struct { at: V, vel: V, dmg: f32, life: f32, big: bool };
 
-pub const Orb = struct { at: V, xp: f32, to: ?u32 = null, speed: f32 = 0 };
+pub const Orb = struct { at: V, xp: f32, pulled: bool = false, speed: f32 = 0 };
 
 pub const EventKind = enum { hit, kill, hurt, fall, block, heal, pulse, level, recruit, swing, merge, smite, loose, cast, spit, blast, boss, burn, lifeline, wave, stop, poison, sprout, lash, lob, boom, strum, charm, raise, crumble, revive };
 
@@ -294,7 +329,7 @@ pub const Event = struct {
     class: ?hero.Class = null,
     big: bool = false,
     crit: bool = false,
-    /// Damage or healing it shows.
+    /// Damage or healing it shows; for a pulse, wave, stop, strum, blast or boom, its reach in cells.
     amount: f32 = 0,
 };
 
@@ -566,7 +601,7 @@ pub const Run = struct {
         while (r.spawn_acc >= 1) {
             r.spawn_acc -= 1;
             if (r.foes.n >= director.ALIVE_MAX) break;
-            _ = r.spawnAt(director.pick(r.t, &r.rng), r.ringPoint(SPAWN_R + r.rng.span(0, 2)));
+            _ = r.spawnAt(director.pick(r.t, &r.rng), r.ringPoint(SPAWN_R + r.rng.span(0, SPAWN_DEPTH)));
         }
         while (r.elites < director.elitesBy(r.t)) {
             const f = r.spawnAt(.brute, r.ringPoint(SPAWN_R)) orelse break;
@@ -616,34 +651,18 @@ pub const Run = struct {
     /// A charmed foe hunts the nearest foe that is not, and bites it.
     fn turned(r: *Run, f: *Foe) void {
         const row = foe.row(f.kind);
-        var best: ?usize = null;
-        var bd: f32 = CHARM_SIGHT * CHARM_SIGHT;
-        for (r.foes.constSlice(), 0..) |o, i| {
-            if (o.charm > 0 or o.hp <= 0 or o.uid == f.uid) continue;
-            const d = mathx.dist2(o.at, f.at);
-            if (d < bd) {
-                bd = d;
-                best = i;
-            }
-        }
-        const i = best orelse {
+        const pick = r.nearestFoe(f.at, CHARM_SIGHT, null) orelse {
             f.vel = .{ 0, 0 };
             return;
         };
-        const o = &r.foes.items[i];
-        const off = mathx.sub(o.at, f.at);
-        const d = mathx.len(off);
-        const dir = mathx.norm(off);
+        const o = &r.foes.items[pick.i];
+        const dir = mathx.norm(mathx.sub(o.at, f.at));
         f.vel = mathx.scale(dir, row.speed);
-        const reach = row.radius + foe.row(o.kind).radius + BITE_PAD;
-        if (d > reach) {
+        if (pick.d > row.radius + BITE_PAD) {
             f.at = mathx.add(f.at, mathx.scale(f.vel, STEP));
             return;
         }
-        if (f.bite > 0) return;
-        f.bite = BITE_CD;
-        f.jab = dir;
-        r.wound(o, row.dmg, dir, false, false);
+        if (f.lunge(dir)) r.wound(o, row.dmg, dir, false, false);
     }
 
     fn nearestMember(r: *Run, p: V) ?*Member {
@@ -667,14 +686,15 @@ pub const Run = struct {
             f.bite -= STEP;
             r.tickDot(f, &f.burn, .burn);
             r.tickDot(f, &f.poison, .poison);
+            if (f.hp <= 0) continue;
             if (f.frozen > 0) {
                 f.frozen -= STEP;
                 f.vel = .{ 0, 0 };
                 continue;
             }
             if (f.charm > 0) {
-                f.charm -= STEP;
                 r.turned(f);
+                f.charm -= STEP;
                 continue;
             }
             const mark = r.markOf(f.at);
@@ -682,14 +702,14 @@ pub const Run = struct {
             const d = mathx.len(to);
             var dir = mathx.norm(to);
             if (row.keep > 0) {
-                if (d < row.keep - 0.5) {
-                    dir = mathx.scale(dir, -0.6);
-                } else if (d < row.keep + 1) {
-                    dir = mathx.scale(.{ -dir[1], dir[0] }, 0.4);
+                if (d < row.keep - KEEP_IN) {
+                    dir = mathx.scale(dir, -BACK_OFF);
+                } else if (d < row.keep + KEEP_OUT) {
+                    dir = mathx.scale(.{ -dir[1], dir[0] }, CIRCLE);
                 }
             }
             if (f.kind == .bat) {
-                const w = @sin(r.t * 5 + @as(f32, @floatFromInt(f.uid % 97))) * BAT_WOBBLE;
+                const w = @sin(r.t * BAT_WOBBLE_RATE + @as(f32, @floatFromInt(f.uid % 97))) * BAT_WOBBLE;
                 const c = @cos(w);
                 const s = @sin(w);
                 dir = .{ dir[0] * c - dir[1] * s, dir[0] * s + dir[1] * c };
@@ -709,43 +729,25 @@ pub const Run = struct {
         r.separate();
         for (r.foes.slice()) |*f| {
             const row = foe.row(f.kind);
+            const biting = f.hostile() and f.frozen <= 0;
             for (r.members.slice()) |*m| {
-                const reach = row.radius + HERO_R;
-                const off = mathx.sub(f.at, m.at);
-                const d2 = mathx.len2(off);
-                if (d2 >= reach * reach) continue;
-                const d = @sqrt(d2);
-                const n = if (d < 1e-4) mathx.fromHeading(@floatFromInt(f.uid)) else mathx.scale(off, 1 / d);
-                if (f.commit <= 0) f.at = mathx.add(m.at, mathx.scale(n, reach));
-                if (f.bite <= 0 and f.frozen <= 0 and f.charm <= 0) {
-                    f.bite = BITE_CD;
-                    f.jab = mathx.scale(n, -1);
-                    if (row.turn > 0) f.commit = COMMIT_S;
-                    r.hurtMember(m, row.dmg, f.jab);
-                    if (m.stats.thorns > 0) r.wound(f, m.stats.thorns, n, true, false);
-                }
+                const c = f.touching(m.at, HERO_R) orelse continue;
+                if (f.commit <= 0) f.at = c.rim;
+                if (!biting or !f.lunge(mathx.scale(c.n, -1))) continue;
+                if (row.turn > 0) f.commit = COMMIT_S;
+                r.hurtMember(m, row.dmg, f.jab);
+                if (m.stats.thorns > 0) r.wound(f, m.stats.thorns, c.n, true, false);
             }
             for (r.skeletons.slice()) |*k| {
-                const reach = row.radius + SKEL_R;
-                const off = mathx.sub(f.at, k.at);
-                const d2 = mathx.len2(off);
-                if (d2 >= reach * reach or d2 < 1e-8) continue;
-                const n = mathx.scale(off, 1 / @sqrt(d2));
-                f.at = mathx.add(k.at, mathx.scale(n, reach));
-                if (f.bite <= 0 and f.frozen <= 0 and f.charm <= 0) {
-                    f.bite = BITE_CD;
-                    f.jab = mathx.scale(n, -1);
-                    k.hp -= row.dmg;
-                    k.flash = FLASH_S;
-                    r.emit(.{ .kind = .hurt, .at = k.at, .dir = f.jab, .class = .necromancer, .amount = row.dmg });
-                }
+                const c = f.touching(k.at, SKEL_R) orelse continue;
+                f.at = c.rim;
+                if (!biting or !f.lunge(mathx.scale(c.n, -1))) continue;
+                k.hp -= row.dmg;
+                k.flash = FLASH_S;
+                r.emit(.{ .kind = .hurt, .at = k.at, .dir = f.jab, .class = .necromancer, .amount = row.dmg });
             }
             for (r.vines.constSlice()) |v| {
-                const reach = row.radius + VINE_R;
-                const off = mathx.sub(f.at, v.at);
-                const d2 = mathx.len2(off);
-                if (d2 >= reach * reach or d2 < 1e-8) continue;
-                f.at = mathx.add(v.at, mathx.scale(off, reach / @sqrt(d2)));
+                if (f.touching(v.at, VINE_R)) |c| f.at = c.rim;
             }
             if (mathx.dist2(f.at, r.party) > DESPAWN_R * DESPAWN_R) f.at = r.ringPoint(SPAWN_R);
         }
@@ -753,9 +755,10 @@ pub const Run = struct {
 
     fn tickDot(r: *Run, f: *Foe, d: *Dot, kind: EventKind) void {
         if (d.t <= 0) return;
-        d.t -= STEP;
-        f.hp -= d.dps * STEP;
-        d.acc += d.dps * STEP;
+        const s = @min(STEP, d.t);
+        d.t -= s;
+        f.hp -= d.dps * s;
+        d.acc += d.dps * s;
         d.show -= STEP;
         if (d.show > 0 and d.t > 0 and f.hp > 0) return;
         r.emit(.{ .kind = kind, .at = f.at, .foe = f.kind, .amount = d.acc });
@@ -787,7 +790,7 @@ pub const Run = struct {
 
     fn spitFrom(r: *Run, f: *Foe, mark: V, d: f32) void {
         const row = foe.row(f.kind);
-        if (d > row.keep + 4) return;
+        if (d > row.keep + SPIT_REACH) return;
         f.spit -= STEP;
         if (f.spit > 0) return;
         f.spit = row.spit_cd;
@@ -799,8 +802,8 @@ pub const Run = struct {
             }
         }
         const big = f.kind == .boss;
+        _ = r.spits.push(.{ .at = f.at, .vel = mathx.scale(mathx.norm(mathx.sub(mark, f.at)), if (big) BIG_SPIT_SPEED else SPIT_SPEED), .dmg = row.spit_dmg, .life = if (big) BIG_SPIT_LIFE else SPIT_LIFE, .big = big }) orelse return;
         r.emit(.{ .kind = .spit, .at = f.at, .foe = f.kind, .big = big });
-        _ = r.spits.push(.{ .at = f.at, .vel = mathx.scale(mathx.norm(mathx.sub(mark, f.at)), if (big) BIG_SPIT_SPEED else SPIT_SPEED), .dmg = row.spit_dmg, .life = if (big) BIG_SPIT_LIFE else SPIT_LIFE, .big = big });
     }
 
     fn lobFrom(r: *Run, f: *Foe, l: foe.Lob, mark: V, d: f32) void {
@@ -808,7 +811,7 @@ pub const Run = struct {
         f.lob -= STEP;
         if (f.lob > 0) return;
         f.lob = l.cd;
-        _ = r.shells.push(.{ .from = f.at, .at = mark, .fuse = l.fuse, .radius = l.radius, .dmg = l.dmg, .warned = l.warned });
+        _ = r.shells.push(.{ .from = f.at, .at = mark, .fuse = l.fuse, .radius = l.radius, .dmg = l.dmg, .warned = l.warned }) orelse return;
         r.emit(.{ .kind = .lob, .at = f.at, .foe = f.kind, .big = l.warned });
     }
 
@@ -951,7 +954,7 @@ pub const Run = struct {
         const s = m.stats;
         m.swing = SWING_S;
         m.swings +%= 1;
-        r.emit(.{ .kind = .swing, .at = m.at, .dir = mathx.fromHeading(m.aim), .class = .knight });
+        r.emit(.{ .kind = .swing, .at = m.at, .dir = mathx.fromHeading(m.aim), .class = m.hero.class });
         for (r.foes.slice()) |*f| {
             if (!f.hostile()) continue;
             const off = mathx.sub(f.at, m.at);
@@ -973,13 +976,13 @@ pub const Run = struct {
 
     fn volley(r: *Run, m: *Member) bool {
         if (!r.shoot(m, .arrow, field(m), VOLLEY_SPREAD)) return false;
-        r.emit(.{ .kind = .loose, .at = m.at, .class = .archer });
+        r.emit(.{ .kind = .loose, .at = m.at, .class = m.hero.class });
         return true;
     }
 
     fn cast(r: *Run, m: *Member) bool {
         if (!r.shoot(m, .fire, null, CAST_SPREAD)) return false;
-        r.emit(.{ .kind = .cast, .at = m.at, .class = .pyromancer });
+        r.emit(.{ .kind = .cast, .at = m.at, .class = m.hero.class });
         return true;
     }
 
@@ -1040,7 +1043,7 @@ pub const Run = struct {
             if (r.clouds.items[i].owner == m.id) r.clouds.remove(i) else i += 1;
         }
         _ = r.clouds.push(.{ .at = at, .owner = m.id, .life = hero.CLOUD_S, .radius = s.cloud_r, .rate = s.charm_rate, .charm_s = s.charm_s }) orelse return false;
-        r.emit(.{ .kind = .strum, .at = at, .amount = s.cloud_r, .class = .bard });
+        r.emit(.{ .kind = .strum, .at = at, .amount = s.cloud_r, .class = m.hero.class });
         return true;
     }
 
@@ -1070,7 +1073,7 @@ pub const Run = struct {
         if (owned(r.skeletons.constSlice(), m.id) >= s.skel_max) return false;
         const at = mathx.add(m.at, mathx.scale(mathx.fromHeading(r.rng.unit() * mathx.TAU), RAISE_R));
         _ = r.skeletons.push(.{ .at = at, .owner = m.id, .hp = s.skel_hp, .max = s.skel_hp, .dmg = s.skel_dmg * r.power(m), .crit = s.skel_crit, .crit_mult = s.crit_mult }) orelse return false;
-        r.emit(.{ .kind = .raise, .at = at, .class = .necromancer });
+        r.emit(.{ .kind = .raise, .at = at, .class = m.hero.class });
         return true;
     }
 
@@ -1115,7 +1118,7 @@ pub const Run = struct {
         if (owned(r.vines.constSlice(), m.id) >= s.vines) return false;
         const at = r.freeTile(m.at, s.range) orelse return false;
         _ = r.vines.push(.{ .at = at, .owner = m.id, .life = hero.VINE_S, .reach = s.vine_reach, .dmg = s.dmg * r.power(m), .crit = s.crit, .crit_mult = s.crit_mult, .poison = s.poison_dps }) orelse return false;
-        r.emit(.{ .kind = .sprout, .at = at, .class = .druid });
+        r.emit(.{ .kind = .sprout, .at = at, .class = m.hero.class });
         return true;
     }
 
@@ -1181,25 +1184,21 @@ pub const Run = struct {
             f.shatter = if (f.frozen > 0) @max(f.shatter, s.shatter) else s.shatter;
             f.frozen = @max(f.frozen, s.stop_s);
         }
-        r.emit(.{ .kind = .stop, .at = m.at, .amount = s.range, .class = .mystic });
+        r.emit(.{ .kind = .stop, .at = m.at, .amount = s.range, .class = m.hero.class });
         return true;
     }
 
     /// Sanctuary, centred on the cleric's own slot.
     fn pulse(r: *Run, m: *Member) bool {
         const s = m.stats;
-        const heal = s.heal;
-        r.emit(.{ .kind = .pulse, .at = m.at, .class = .cleric, .amount = (@as(f32, @floatFromInt(s.aura)) + 0.5) * SPACING });
+        r.emit(.{ .kind = .pulse, .at = m.at, .class = m.hero.class, .amount = (@as(f32, @floatFromInt(s.aura)) + 0.5) * SPACING });
         const slot = m.slot;
         const id = m.id;
         const at = m.at;
         for (r.members.slice()) |*o| {
             if (formation.apart(o.slot, slot) > s.aura) continue;
             if (o.id == id and !s.self_heal) continue;
-            if (o.hp >= o.stats.max_hp) continue;
-            const was = o.hp;
-            o.hp = @min(o.stats.max_hp, o.hp + heal * r.healOf(o));
-            r.emit(.{ .kind = .heal, .at = o.at, .class = o.hero.class, .amount = o.hp - was });
+            if (o.hp < o.stats.max_hp) r.heal(o, s.heal);
         }
         if (s.lifeline) {
             var worst: ?*Member = null;
@@ -1209,9 +1208,7 @@ pub const Run = struct {
             }
             if (worst) |o| {
                 if (o.hp < o.stats.max_hp) {
-                    const was = o.hp;
-                    o.hp = @min(o.stats.max_hp, o.hp + heal * hero.LIFELINE * r.healOf(o));
-                    r.emit(.{ .kind = .heal, .at = o.at, .class = o.hero.class, .amount = o.hp - was });
+                    r.heal(o, s.heal * hero.LIFELINE);
                     r.emit(.{ .kind = .lifeline, .at = o.at, .from = at });
                 }
             }
@@ -1228,7 +1225,14 @@ pub const Run = struct {
         return true;
     }
 
+    fn heal(r: *Run, o: *Member, amount: f32) void {
+        const was = o.hp;
+        o.hp = @min(o.stats.max_hp, o.hp + amount * r.healOf(o));
+        r.emit(.{ .kind = .heal, .at = o.at, .class = o.hero.class, .amount = o.hp - was });
+    }
+
     fn flyBolts(r: *Run) void {
+        r.bins.build(r.party, r.foes.constSlice());
         var i: usize = 0;
         while (i < r.bolts.n) {
             const b = &r.bolts.items[i];
@@ -1246,14 +1250,12 @@ pub const Run = struct {
     fn boltHits(r: *Run, b: *Bolt) bool {
         var it = r.bins.near(b.at, foe.MAX_RADIUS + BOLT_R);
         while (it.next()) |j| {
-            if (j >= r.foes.n) continue;
             const f = &r.foes.items[j];
             if (!f.hostile() or b.hit(f.uid)) continue;
             const reach = foe.row(f.kind).radius + BOLT_R;
             if (mathx.dist2(f.at, b.at) > reach * reach) continue;
             const dir = mathx.norm(b.vel);
-            const big = f.kind == .brute or f.kind == .boss;
-            r.wound(f, b.dmg * (if (big) b.big else 1), dir, false, b.crit);
+            r.wound(f, b.dmg * (if (foe.row(f.kind).big) b.big else 1), dir, false, b.crit);
             if (b.burn > 0) f.burn.apply(b.burn, hero.BURN_S);
             if (b.kind == .fire) r.emit(.{ .kind = .blast, .at = b.at, .dir = dir, .big = b.crit, .amount = b.splash });
             if (b.splash > 0) {
@@ -1351,12 +1353,12 @@ pub const Run = struct {
             const m = r.nearestMember(o.at) orelse return;
             const off = mathx.sub(m.at, o.at);
             const d = mathx.len(off);
-            if (o.to == null and d > MAGNET_R) {
+            if (!o.pulled and d > MAGNET_R) {
                 i += 1;
                 continue;
             }
-            o.to = m.id;
-            o.speed = @min(ORB_SPEED, o.speed + ORB_SPEED * 3 * STEP);
+            o.pulled = true;
+            o.speed = @min(ORB_SPEED, o.speed + ORB_ACCEL * STEP);
             const go = o.speed * STEP;
             if (d <= COLLECT_R + go) {
                 r.collect(m, o.xp);
@@ -1486,14 +1488,10 @@ pub const Run = struct {
         for (r.levels.slice()) |*l| {
             if (l.* == from) l.* = to;
         }
-        for (r.vines.slice()) |*v| {
-            if (v.owner == from) v.owner = to;
-        }
-        for (r.clouds.slice()) |*c| {
-            if (c.owner == from) c.owner = to;
-        }
-        for (r.skeletons.slice()) |*k| {
-            if (k.owner == from) k.owner = to;
+        inline for (.{ r.vines.slice(), r.clouds.slice(), r.skeletons.slice() }) |items| {
+            for (items) |*x| {
+                if (x.owner == from) x.owner = to;
+            }
         }
     }
 
@@ -1885,7 +1883,6 @@ test "a fully pierced sniper arrow strikes each foe in its line once" {
     for (r.members.slice()) |*o| o.cd = 99;
     var hits: usize = 0;
     for (0..60) |_| {
-        r.bins.build(r.party, r.foes.constSlice());
         r.flyBolts();
         for (r.drainEvents()) |e| hits += @intFromBool(e.kind == .hit);
     }
@@ -1894,6 +1891,19 @@ test "a fully pierced sniper arrow strikes each foe in its line once" {
     std.debug.print("pierce {d}: {d} hits along a line of {d}, the most any foe took {d:.1}\n", .{ a.stats.pierce, hits, r.foes.n, most });
     try std.testing.expectEqual(@as(usize, hero.PIERCE_MAX) + 1, hits);
     try std.testing.expectApproxEqAbs(10 * (1 - foe.row(.husk).armor), most, 1e-3);
+}
+
+test "a bolt strikes a foe knocked a cell from where it was binned" {
+    const r = try testRun();
+    defer std.testing.allocator.destroy(r);
+    const f = plant(r, .ghoul, mathx.add(r.party, .{ 10.9, 0.5 }));
+    f.hp = 10_000;
+    r.bins.build(r.party, r.foes.constSlice());
+    f.at = mathx.add(f.at, .{ 1.4, 0 });
+    _ = r.bolts.push(.{ .kind = .arrow, .at = f.at, .vel = .{ 0, 1 }, .dmg = 10, .pierce = 0, .life = 1, .splash = 0 });
+    r.flyBolts();
+    std.debug.print("ghoul knocked 1.4 cells after binning, an arrow on it: took {d:.1}\n", .{10_000 - f.hp});
+    try std.testing.expect(f.hp < 10_000);
 }
 
 test "a burn shows what it dealt to its last step, and a fresh one starts from its own dps" {
@@ -1908,6 +1918,7 @@ test "a burn shows what it dealt to its last step, and a fresh one starts from i
         for (r.drainEvents()) |e| shown += e.amount;
     }
     std.debug.print("a 20 dps burn for 1.2 s: dealt {d:.2}, shown {d:.2}\n", .{ 100 - f.hp, shown });
+    try std.testing.expectApproxEqAbs(@as(f32, 24), 100 - f.hp, 1e-3);
     try std.testing.expectApproxEqAbs(100 - f.hp, shown, 1e-3);
     f.burn.apply(4, 1);
     try std.testing.expectEqual(@as(f32, 4), f.burn.dps);

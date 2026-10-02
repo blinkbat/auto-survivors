@@ -171,6 +171,8 @@ pub const DIM = rgb(0x8c8672);
 pub const GOLD = rgb(0xc9a24a);
 pub const BRIGHT = rgb(0xf0d27a);
 pub const FOE = rgb(0xe0503a);
+/// Harm to the party: what it took, and where a warned shell will land.
+pub const HARM = rgb(0xe8423a);
 pub const LIFE = rgb(0x9c2f2a);
 pub const LIFE_BG = fade(rgb(0x2a1414), 0.85);
 pub const XP = rgb(0x5aa8e8);
